@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 380px; /* Match height in st.components.v1.html */
+            background-color: #000;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        .lights-container {
+            display: flex;
+            gap: 30px;
+            /* This animation fades the lights out after they go out */
+            animation: fadeOutLights 1s ease-in-out 6.5s forwards;
+        }
+
+        .light {
+            width: 70px;
+            height: 70px;
+            background-color: #330000; /* Dark red (off state) */
+            border-radius: 50%;
+            border: 2px solid #444;
+            opacity: 0; /* Start invisible */
+        }
+
+        /* --- Animation Keyframes --- */
+        .light:nth-child(1) { animation: turnOn 1s ease-in-out 1s forwards; }
+        .light:nth-child(2) { animation: turnOn 1s ease-in-out 2s forwards; }
+        .light:nth-child(3) { animation: turnOn 1s ease-in-out 3s forwards; }
+        .light:nth-child(4) { animation: turnOn 1s ease-in-out 4s forwards; }
+        .light:nth-child(5) { animation: turnOn 1s ease-in-out 5s forwards, goOut 0.5s ease-in 6.5s forwards; }
+
+        @keyframes turnOn {
+            to { opacity: 1; background-color: #FF0000; box-shadow: 0 0 35px #FF0000; }
+        }
+        @keyframes goOut {
+            to { background-color: #330000; box-shadow: none; }
+        }
+        @keyframes fadeOutLights {
+            to { opacity: 0; transform: scale(0); }
+        }
+        
+        /* --- Logo and Title --- */
+        .logo-and-title-container {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            opacity: 0;
+            animation: fadeInLogoAndTitle 1.5s ease-in-out 7.0s forwards;
+        }
+        .logo-container {
+            width: 90%;
+            max-width: 850px; /* Made logo significantly bigger */
+        }
+        .logo-container img { width: 100%; }
+        .title {
+            color: white;
+            font-size: 1.8rem;
+            font-weight: 300;
+            letter-spacing: 2px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        @keyframes fadeInLogoAndTitle { to { opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div class="lights-container">
+        <div class="light"></div><div class="light"></div><div class="light"></div><div class="light"></div><div class="light"></div>
+    </div>
+    <div class="logo-and-title-container">
+        <div class="logo-container"><img src="{{LOGO_SRC}}" alt="F1 Logo"></div>
+        <h1 class="title">F1 Race Engineer Strategy Tool</h1>
+    </div>
+</body>
+</html>
