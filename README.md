@@ -8,7 +8,6 @@ cars, and performance variability.
 undercut vs overcut).
 
 ## Setup and Run Instructions
-
 To get this project up and running on your local machine, follow these steps:
 
 ### Prerequisites
@@ -21,34 +20,31 @@ Make sure you have Python 3.x installed.
     ```bash
     cd F1
     ```
-2.  **Install Flask:**
+2.  **(Optional but Recommended) Create and activate a virtual environment:**
     ```bash
-    pip install Flask
+    python -m venv venv
+    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+    ```
+3.  **Install the required packages from `requirements.txt`:**
+    ```bash
+    pip install -r requirements.txt
     ```
 
 ### Running the Application
 
-1.  **Ensure your file structure is correct:**
+1.  **Run the Streamlit application from your terminal:**
     ```
-    F1/
-    ├── app.py
-    ├── style.css
-    ├── README.md
-    └── templates/
-        └── index.html
+    streamlit run app.py
     ```
-    (Make sure `index.html` is inside a `templates` folder, and `style.css` will be in a `static` folder if you follow Flask's convention, or directly in `F1` if you adjust `app.py` to serve it from there. Your current `index.html` expects `style.css` in `static`.)
-
-2.  **Run the Flask application:**
-    ```bash
-    python app.py
-    ```
-
-3.  **Access the application:**
-    Open your web browser and go to `http://127.0.0.1:5000/`.
+2.  **Access the application:**
+    A new tab should open in your web browser with the application. If not, open your browser and go to the local URL displayed in your terminal (usually `http://localhost:8501`).
 
 ## Usage
 
-*   Enter the desired number of laps for the race.
-*   Specify the pit stop lap for Strategy 1 and Strategy 2.
-*   Click "Run Simulation" to see the simulated race results, including total times, pit events, and potential safety car deployments.
+*   The application will start with an intro animation. Click "Enter the Pit Lane" to proceed.
+*   Use the sidebar to select the race season and a specific Grand Prix from that season.
+*   Adjust global parameters like the fastest car's pace and pit stop time loss.
+*   In the main area, select a driver.
+*   Define a strategy by entering the pit stop laps (e.g., `15, 40`).
+*   Choose the tire compound for the starting stint and each subsequent stint.
+*   Click "Simulate Race Strategy" to view the results, including total race time and a lap time chart.

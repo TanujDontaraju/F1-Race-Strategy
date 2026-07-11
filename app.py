@@ -25,71 +25,116 @@ def show_intro():
     """Displays an introductory screen with an F1 logo animation."""
     # --- Define paths for the logo files ---
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    logo_path = os.path.join(script_dir, "F1 Logo (Red).png")
-    intro_html_path = os.path.join(script_dir, "intro.html")
+    assets = {
+        "logo": os.path.join(script_dir, "F1 Logo (Red).png"),
+        "intro_html": os.path.join(script_dir, "intro.html"),
+        "lights_sound": os.path.join(script_dir, "F1 Starting light sound.mp3"),
+        "engine_sound": os.path.join(script_dir, "Car Start.mp3")
+    }
 
-    # --- Check for logo files before starting ---
-    if not os.path.exists(logo_path) or not os.path.exists(intro_html_path):
-        st.error("Error: Missing asset file(s).")
-        if not os.path.exists(logo_path):
-            st.warning("- `F1 Logo (Red).png` is missing.")
-        if not os.path.exists(intro_html_path):
-            st.warning("- `intro.html` is missing.")
-        st.info(f"Please ensure both files are in the app directory: `{script_dir}`")
-        try:
-            files_in_dir = os.listdir(script_dir)
-            st.warning("Files currently in this folder:")
-            st.code("\n".join(sorted(files_in_dir)))
-        except Exception as e:
-            st.error(f"An error occurred while trying to list the directory contents: {e}")
+    # --- Check for asset files before starting ---
+    # The logo and HTML are required. Audio is an optional enhancement.
+    if not os.path.exists(assets["logo"]) or not os.path.exists(assets["intro_html"]):
+        st.error("Error: Missing critical asset file(s) (`F1 Logo (Red).png` or `intro.html`).")
         st.stop()
 
     # --- Prepare and render the HTML animation ---
-    def get_image_as_base64(path):
+    def get_file_as_base64(path):
+        if not os.path.exists(path):
+            return ""
         with open(path, "rb") as f:
             data = f.read()
         return base64.b64encode(data).decode()
 
-    logo_base64 = get_image_as_base64(logo_path)
-    with open(intro_html_path, "r") as f:
+    logo_base64 = get_file_as_base64(assets["logo"])
+    lights_sound_base64 = get_file_as_base64(assets["lights_sound"])
+    engine_base64 = get_file_as_base64(assets["engine_sound"])
+
+    lights_sound_src = f"data:audio/mpeg;base64,{lights_sound_base64}" if lights_sound_base64 else ""
+    engine_src = f"data:audio/mpeg;base64,{engine_base64}" if engine_base64 else ""
+
+    with open(assets["intro_html"], "r") as f:
         html_template = f.read()
     
-    final_html = html_template.replace("{{LOGO_SRC}}", f"data:image/png;base64,{logo_base64}")
+    final_html = html_template.replace("{{LOGO_SRC}}", f"data:image/png;base64,{logo_base64}") \
+                              .replace("{{LIGHTS_SOUND_SRC}}", lights_sound_src) \
+                              .replace("{{ENGINE_SRC}}", engine_src)
 
     st.markdown("""
         <style>
-        /* Prevent page shake by always showing the scrollbar */
-        html { overflow-y: scroll; }
+        /* Prevent scrolling on the intro page */
+        html { overflow-y: hidden !important; }
         .stApp { background-color: #000000; }
+
+        /* Force the iframe containing the intro animation to fill the viewport */
+        iframe {
+            height: 100vh !important;
+            width: 100vw !important;
+            position: fixed; /* Pin it to the viewport */
+            top: 0;
+            left: 0;
+            border: none; /* Remove default iframe border */
+        }
         
-        /* Style the button to appear after the animation (8.5s total) */
-        [data-testid="stButton"] {
+        /* Directly style the button's container for robust positioning and animation */
+        div[data-testid="stButton"] {
+            position: fixed !important;
+            top: 65%; /* Position under the centered logo */
+            left: 50%;
+            transform: translateX(-50%);
+            width: auto !important; /* Override Streamlit's default width */
+            z-index: 10;
+
+            /* Animation for fade-in */
             opacity: 0;
-            animation: fadeIn 1s ease-in-out 8.5s forwards;
+            animation: fadeIn 1s ease-in-out 6s forwards; /* Sync with logo fade-in */
         }
         @keyframes fadeIn {
             from { opacity: 0; }
-            to   { opacity: 1; transform: scale(1); }
+            to   { opacity: 1; }
+        }
+
+        div[data-testid="stButton"] > button {
+            background-color: transparent;
+            color: #E10600; /* F1 Red */
+            border: 2px solid #E10600;
+            border-radius: 30px; /* Make it more rounded */
+            font-weight: bold;
+            text-transform: uppercase;
+            padding: 10px 24px;
+            transition: all 0.3s ease-in-out;
+        }
+
+        div[data-testid="stButton"] > button:hover {
+            background-color: #E10600;
+            color: #FFFFFF;
+            border-color: #E10600;
+            box-shadow: 0 0 20px #E10600;
+            transform: scale(1.05);
         }
         </style>
     """, unsafe_allow_html=True)
 
     # Render the HTML component with the animation
-    st.components.v1.html(final_html, height=400)
+    st.components.v1.html(final_html)
 
-    # Display the button. The CSS above handles its delayed appearance.
-    _, col_btn, _ = st.columns([2, 1, 2])
-    with col_btn:
-        if st.button("Enter the Pit Lane", use_container_width=True):
-            st.session_state.intro_complete = True
-            # Reset styles for the main app to prevent them from carrying over
-            st.markdown("""
-                <style>
-                .stApp { background: none; }
-                html { overflow-y: auto; } /* Restore default scrollbar behavior */
-                </style>
-            """, unsafe_allow_html=True)
-            st.rerun()
+    # The button is now positioned and animated entirely via the CSS above
+    if st.button("Enter the Pit Lane"):
+        st.session_state.intro_complete = True
+        # Reset styles for the main app to prevent them from carrying over
+        st.markdown("""
+            <style>
+            .stApp { background: none; }
+            iframe {
+                height: auto !important; width: auto !important;
+                position: static; top: auto; left: auto;
+                border: 1px solid #e6e6e6;
+            }
+            div[data-testid="stButton"] { position: static !important; transform: none; }
+            html { overflow-y: auto !important; }
+            </style>
+        """, unsafe_allow_html=True)
+        st.rerun()
 
 def main_app():
     # --- Main Title ---
