@@ -19,36 +19,40 @@ Make sure you have Python 3.x installed.
 
 1.  **Clone the repository (if applicable) or navigate to your project directory:**
     ```bash
-    cd F1
+    cd path/to/F1
     ```
-2.  **Install Flask:**
+
+2.  **(Recommended) Create and activate a virtual environment:**
+    This keeps your project dependencies isolated.
     ```bash
-    pip install Flask
+    python -m venv venv
+    # On Windows
+    .\venv\Scripts\activate
+    # On macOS/Linux
+    # source venv/bin/activate
+    ```
+
+3.  **Install the required Python packages using `requirements.txt`:**
+    ```bash
+    pip install -r requirements.txt
     ```
 
 ### Running the Application
 
-1.  **Ensure your file structure is correct:**
-    ```
-    F1/
-    ├── app.py
-    ├── style.css
-    ├── README.md
-    └── templates/
-        └── index.html
-    ```
-    (Make sure `index.html` is inside a `templates` folder, and `style.css` will be in a `static` folder if you follow Flask's convention, or directly in `F1` if you adjust `app.py` to serve it from there. Your current `index.html` expects `style.css` in `static`.)
-
-2.  **Run the Flask application:**
+1.  **Run the Streamlit application using Python's module flag:**
+    This is the most reliable method, especially if you are not using a virtual environment.
     ```bash
-    python app.py
+    python -m streamlit run app.py
     ```
 
-3.  **Access the application:**
-    Open your web browser and go to `http://127.0.0.1:5000/`.
+2.  **Access the application:**
+    Open your web browser and go to the URL provided in your terminal (usually `http://localhost:8501`).
 
 ## Usage
 
-*   Enter the desired number of laps for the race.
-*   Specify the pit stop lap for Strategy 1 and Strategy 2.
-*   Click "Run Simulation" to see the simulated race results, including total times, pit events, and potential safety car deployments.
+*   Use the sidebar to select the **Season** and **Grand Prix**.
+*   Adjust the base **Fastest Car Pace** and **Pit Stop Time Loss** if desired.
+*   In the main area, select a **Driver** from the dropdown menu.
+*   Define the race strategy by entering the **Pit Stop Laps** (e.g., `15, 40`).
+*   Choose the **Tire Compound** for the start and for each subsequent stint.
+*   Click **Simulate Race Strategy** to view the results, including total race time, a lap time chart, and detailed lap-by-lap data.
