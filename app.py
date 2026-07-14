@@ -29,8 +29,6 @@ def show_intro():
         "logo": os.path.join(script_dir, "F1 Logo (Red).png"),
         "intro_html": os.path.join(script_dir, "intro.html"),
         "intro_css": os.path.join(script_dir, "intro.css"),
-        "lights_sound": os.path.join(script_dir, "F1 Starting light sound.mp3"),
-        "engine_sound": os.path.join(script_dir, "Car Start.mp3")
     }
 
     # --- Check for asset files before starting ---
@@ -49,109 +47,20 @@ def show_intro():
         return base64.b64encode(data).decode()
 
     logo_base64 = get_file_as_base64(assets["logo"])
-    lights_sound_base64 = get_file_as_base64(assets["lights_sound"])
-    engine_base64 = get_file_as_base64(assets["engine_sound"])
 
     # Read the CSS file content
     with open(assets["intro_css"], "r") as f:
         css_styles = f.read()
 
-    lights_sound_src = f"data:audio/mpeg;base64,{lights_sound_base64}" if lights_sound_base64 else ""
-    engine_src = f"data:audio/mpeg;base64,{engine_base64}" if engine_base64 else ""
-
     with open(assets["intro_html"], "r") as f:
         html_template = f.read()
-
-    # Inject the CSS and other assets into the HTML template
+    # Inject the CSS and logo into the HTML template
     final_html = html_template.replace("{{CSS_STYLES}}", css_styles) \
-                              .replace("{{LOGO_SRC}}", f"data:image/png;base64,{logo_base64}") \
-                              .replace("{{LIGHTS_SOUND_SRC}}", lights_sound_src) \
-                              .replace("{{ENGINE_SRC}}", engine_src)
-
-    # NOTE: st.components.v1.html() renders content inside an <iframe>.
-    # That iframe is wrapped by Streamlit in a div with data-testid="stIFrame"
-    # (NOT "stHtml" -- that testid belongs to the separate st.html() function,
-    # which doesn't use an iframe at all). Targeting the wrong testid meant
-    # none of this fullscreen/centering CSS was ever being applied, so the
-    # component just sat at Streamlit's default iframe size near the top of
-    # the page -- which is why the animation looked "stuck" and the red
-    # flashes only filled that small box instead of the whole screen.
-    #
-    # We target the correct testid, plus a couple of fallbacks (different
-    # Streamlit versions have used slightly different testids for this),
-    # plus a bare `iframe` rule as a final safety net -- this block of CSS
-    # is only injected while the intro is showing, so there's only ever one
-    # iframe on the page at this point, making the blanket rule safe.
-    st.markdown("""
-        <style>
-        /* Prevent scrolling on the intro page */
-        html { overflow-y: hidden !important; }
-        .stApp { background-color: #000000; }
-
-        /* Make the HTML component container fill the viewport */
-        div[data-testid="stIFrame"],
-        div[data-testid="stCustomComponentV1"],
-        div[data-testid="stHtml"] {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            overflow: hidden !important; /* Prevent container from showing scrollbars */
-        }
-
-        /* Ensure the iframe inside fills this container */
-        div[data-testid="stIFrame"] > iframe,
-        div[data-testid="stCustomComponentV1"] > iframe,
-        div[data-testid="stHtml"] > iframe,
-        iframe {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important; /* Use !important to override Streamlit's default inline height */
-            border: none !important; /* Remove default iframe border */
-        }
-
-        /* Style for the main "Enter" button, which appears after the animation */
-        div[data-testid="stButton"] {
-            position: fixed !important;
-            top: 65%; /* Position under the centered logo */
-            left: 50%;
-            transform: translateX(-50%);
-            width: auto !important; /* Override Streamlit's default width */
-            z-index: 10;
-            opacity: 0;
-            animation: fadeIn 1s ease-in-out 6s forwards; /* Sync with logo fade-in */
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to   { opacity: 1; }
-        }
-        div[data-testid="stButton"] > button {
-            background-color: transparent;
-            color: #E10600; /* F1 Red */
-            border: 2px solid #E10600;
-            border-radius: 30px; /* Make it more rounded */
-            font-weight: bold;
-            text-transform: uppercase;
-            padding: 10px 24px;
-            transition: all 0.3s ease-in-out;
-        }
-        div[data-testid="stButton"] > button:hover {
-            background-color: #E10600;
-            color: #FFFFFF;
-            border-color: #E10600;
-            box-shadow: 0 0 20px #E10600;
-            transform: scale(1.05);
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
+                              .replace("{{LOGO_SRC}}", f"data:image/png;base64,{logo_base64}")
     # Render the HTML component with the animation.
     # Passing an explicit height + scrolling=False as a fallback in case the
     # CSS above hasn't painted yet on first render.
-    st.components.v1.html(final_html, height=1000, scrolling=False)
+    st.components.v1.html(final_html, height=800, scrolling=False)
 
     if st.button("Enter the Pit Lane"):
         st.session_state.intro_complete = True
@@ -405,35 +314,4 @@ if 'intro_complete' not in st.session_state:
 if not st.session_state.intro_complete:
     show_intro()
 else:
-    # Add CSS to reset intro styles and fade in the main application,
-    # creating a smooth transition.
-    st.markdown("""
-        <style>
-            /* --- CSS RESET FOR MAIN APP --- */
-            /* Undo intro styles that might leak from the previous page view */
-            html { overflow-y: auto !important; }
-            .stApp { background: none; }
-
-            /* --- CINEMATIC FADE-IN TRANSITION --- */
-            /* This creates a more dynamic entrance effect by combining a fade,
-               a slide-up, a slight zoom, and a de-blur. */
-            @keyframes cinematicFadeIn {
-                from {
-                    opacity: 0;
-                    transform: translateY(20px) scale(0.98);
-                    filter: blur(3px);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateY(0) scale(1);
-                    filter: blur(0);
-                }
-            }
-
-            /* Target the main container of the app content for a smooth entrance */
-            div[data-testid="stAppViewContainer"] {
-                animation: cinematicFadeIn 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-            }
-        </style>
-    """, unsafe_allow_html=True)
     main_app()
