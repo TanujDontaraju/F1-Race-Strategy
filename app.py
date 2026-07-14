@@ -286,6 +286,9 @@ def main_app():
             return {"total_laps": 0, "drivers": [], "team_pace": {}}
 
     # --- Sidebar for Global Inputs ---
+    # FastF1's detailed timing data is available from 2018 onward.
+    EARLIEST_SUPPORTED_YEAR = 2018
+
     st.sidebar.header("Race Settings")
     current_year = datetime.date.today().year
     # Only 2018+ seasons have the F1 live-timing data FastF1 needs for lap
