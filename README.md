@@ -20,7 +20,7 @@ Make sure you have Python 3.x installed.
     ```bash
     cd path/to/F1
     ```
-2.  **(Optional but Recommended) Create and activate a virtual environment:**
+2.  **(Optional but Recommended) Create and activate a virtual environment (use `python3` if `python` is not found):**
     ```bash
     python -m venv venv
     source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
@@ -32,10 +32,10 @@ Make sure you have Python 3.x installed.
 
 ### Running the Application
 
-1.  **Run the Streamlit application using Python's module flag:**
+1.  **Run the Streamlit application using Python's module flag (use `python3` if `python` is not found):**
     This is the most reliable method, especially if you are not using a virtual environment.
     ```bash
-    python -m streamlit run app.py
+    python3 -m streamlit run app.py
     ```
 
 2.  **Access the application:**

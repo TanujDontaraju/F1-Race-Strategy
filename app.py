@@ -112,7 +112,7 @@ def show_intro():
             height: 100vh !important; /* Use !important to override Streamlit's default inline height */
             border: none !important; /* Remove default iframe border */
         }
-        
+
         /* Style for the main "Enter" button, which appears after the animation */
         div[data-testid="stButton"] {
             position: fixed !important;
@@ -186,6 +186,13 @@ def main_app():
         """
         Gets session details: total laps, driver list, and team pace deltas.
         Returns a dictionary with 'total_laps', 'drivers', and 'team_pace'.
+
+        NOTE: FastF1's lap-by-lap timing data (laps, tire compounds, pit
+        stops, pace) is sourced from the F1 live-timing API, which only has
+        coverage from 2018 onward. Seasons before that will load a Session
+        object fine, but session.laps will be empty/unusable, which is why
+        this function -- and the sidebar season selector -- restrict
+        analysis to EARLIEST_SUPPORTED_YEAR and later.
         """
         try:
             session = fastf1.get_session(year, event_name, 'R')
@@ -198,6 +205,18 @@ def main_app():
                 "drivers": [],
                 "team_pace": {}
             }
+
+        # Explicitly check FastF1's own flag for whether this session has
+        # live-timing (lap-level) data available, rather than letting a
+        # missing-data error surface later when we try to read session.laps.
+        if not getattr(session, 'f1_api_support', True):
+            st.warning(
+                f"{year} {event_name} predates FastF1's detailed timing data "
+                f"(available from {EARLIEST_SUPPORTED_YEAR} onward). Lap times, "
+                f"tire stints, and pit stops aren't available for this season, "
+                f"so strategy simulation can't be run."
+            )
+            return {"total_laps": 0, "drivers": [], "team_pace": {}}
 
         drivers_data = []
         try:
@@ -269,7 +288,16 @@ def main_app():
     # --- Sidebar for Global Inputs ---
     st.sidebar.header("Race Settings")
     current_year = datetime.date.today().year
-    selected_year = st.sidebar.selectbox("Select Season", range(current_year, 1949, -1))
+    # Only 2018+ seasons have the F1 live-timing data FastF1 needs for lap
+    # times, tire stints, and pit stops. Earlier seasons are excluded here
+    # rather than allowed to fail deeper in the pipeline.
+    selected_year = st.sidebar.selectbox(
+        "Select Season", range(current_year, EARLIEST_SUPPORTED_YEAR - 1, -1)
+    )
+    st.sidebar.caption(
+        f"Detailed timing data is only available from FastF1 for "
+        f"{EARLIEST_SUPPORTED_YEAR} onward, so earlier seasons aren't listed."
+    )
 
     try:
         schedule = fastf1.get_event_schedule(selected_year, include_testing=False)
