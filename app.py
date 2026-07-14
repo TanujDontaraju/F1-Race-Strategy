@@ -55,7 +55,7 @@ def show_intro():
 
     with open(assets["intro_html"], "r") as f:
         html_template = f.read()
-    
+
     final_html = html_template.replace("{{LOGO_SRC}}", f"data:image/png;base64,{logo_base64}") \
                               .replace("{{LIGHTS_SOUND_SRC}}", lights_sound_src) \
                               .replace("{{ENGINE_SRC}}", engine_src)
@@ -63,11 +63,11 @@ def show_intro():
     st.markdown("""
         <style>
         /* Prevent scrolling on the intro page */
-        html { overflow-y: hidden !important; }
+        html { overflow-y: hidden !important; } /* Hide scrollbar during intro */
         .stApp { background-color: #000000; }
 
-        /* Force the iframe containing the intro animation to fill the viewport */
-        iframe {
+        /* Force the iframe from st.components.v1.html to fill the viewport */
+        div[data-testid="stHtml"] > iframe {
             height: 100vh !important;
             width: 100vw !important;
             position: fixed; /* Pin it to the viewport */
@@ -76,7 +76,7 @@ def show_intro():
             border: none; /* Remove default iframe border */
         }
         
-        /* Directly style the button's container for robust positioning and animation */
+        /* Style for the main "Enter" button, which appears after the animation */
         div[data-testid="stButton"] {
             position: fixed !important;
             top: 65%; /* Position under the centered logo */
@@ -84,8 +84,6 @@ def show_intro():
             transform: translateX(-50%);
             width: auto !important; /* Override Streamlit's default width */
             z-index: 10;
-
-            /* Animation for fade-in */
             opacity: 0;
             animation: fadeIn 1s ease-in-out 6s forwards; /* Sync with logo fade-in */
         }
@@ -93,7 +91,6 @@ def show_intro():
             from { opacity: 0; }
             to   { opacity: 1; }
         }
-
         div[data-testid="stButton"] > button {
             background-color: transparent;
             color: #E10600; /* F1 Red */
@@ -104,7 +101,6 @@ def show_intro():
             padding: 10px 24px;
             transition: all 0.3s ease-in-out;
         }
-
         div[data-testid="stButton"] > button:hover {
             background-color: #E10600;
             color: #FFFFFF;
@@ -118,22 +114,10 @@ def show_intro():
     # Render the HTML component with the animation
     st.components.v1.html(final_html)
 
-    # The button is now positioned and animated entirely via the CSS above
     if st.button("Enter the Pit Lane"):
         st.session_state.intro_complete = True
-        # Reset styles for the main app to prevent them from carrying over
-        st.markdown("""
-            <style>
-            .stApp { background: none; }
-            iframe {
-                height: auto !important; width: auto !important;
-                position: static; top: auto; left: auto;
-                border: 1px solid #e6e6e6;
-            }
-            div[data-testid="stButton"] { position: static !important; transform: none; }
-            html { overflow-y: auto !important; }
-            </style>
-        """, unsafe_allow_html=True)
+        # The CSS reset logic has been moved to the main app's rendering block
+        # for better control. This simply triggers the state change and rerun.
         st.rerun()
 
 def main_app():
@@ -168,48 +152,71 @@ def main_app():
             session = fastf1.get_session(year, event_name, 'R')
             # Load all data except for telemetry, which is bulky and can be problematic for older seasons
             session.load(telemetry=False, weather=False, messages=False)
+        except Exception as e:
+            st.warning(f"Could not load session data for {year} {event_name}. FastF1 may not have data for this event. Error: {e}")
+            return {
+                "total_laps": 0,
+                "drivers": [],
+                "team_pace": {}
+            }
 
-            # Now that data should be loaded, extract driver info.
-            drivers_data = []
-            # The session.results property is the most reliable source for FullName if available
-            if hasattr(session, 'results') and not session.results.empty:
+        drivers_data = []
+        try:
+            # For modern seasons (approx. 2018+), session.results is well-structured.
+            # For older seasons, it may be missing columns (like 'FullName'), causing errors.
+            # This try/except block attempts to use the modern structure and falls back to a more
+            # robust method for older data.
+            try:
+                if not hasattr(session, 'results') or session.results.empty:
+                    raise ValueError("No session.results found, using fallback.")
+
                 for row in session.results.itertuples():
                     drivers_data.append({
                         'Abbr': row.Abbreviation,
                         'FullName': row.FullName,
                         'TeamName': row.TeamName
                     })
-            # If session.results is not available (common in older seasons), fall back to laps
-            else:
-                driver_numbers = session.laps['DriverNumber'].unique()
-                for drv_num in driver_numbers:
-                    driver_laps = session.laps.pick_driver(drv_num)
-                    if not driver_laps.empty:
-                        driver_info = driver_laps.iloc[0]
-                        # Use .get() to safely access 'FullName', falling back to the abbreviation
-                        full_name = driver_info.get('FullName', driver_info['Driver'])
-                        drivers_data.append({
-                            'Abbr': driver_info['Driver'],
-                            'FullName': full_name,
-                            'TeamName': driver_info['Team']
-                        })
+                if not drivers_data:
+                    raise ValueError("Results were empty, using fallback.")
+            except (AttributeError, ValueError):
+                # Fallback for older seasons: Use lap data, which is more consistent.
+                drivers_data = []  # Ensure list is clean before filling
+                if hasattr(session, 'laps') and not session.laps.empty and 'Driver' in session.laps.columns:
+                    driver_abbreviations = session.laps['Driver'].unique()
+                    for drv_abbr in driver_abbreviations:
+                        driver_laps = session.laps.pick_driver(drv_abbr)
+                        if not driver_laps.empty:
+                            driver_info = driver_laps.iloc[0]
+                            # Safely get required info
+                            abbr = driver_info.get('Driver')
+                            team = driver_info.get('Team')
+                            if abbr and team:
+                                full_name = driver_info.get('FullName', abbr)
+                                drivers_data.append({
+                                    'Abbr': abbr,
+                                    'FullName': full_name,
+                                    'TeamName': team
+                                })
 
             if not drivers_data:
-                raise ValueError("Could not extract any driver data from the session.")
+                st.warning(f"Could not extract any driver data for {year} {event_name}. The data may be incomplete.")
+                return {"total_laps": getattr(session, 'total_laps', 55), "drivers": [], "team_pace": {}}
 
             drivers_data = sorted(drivers_data, key=lambda x: (x['TeamName'], x['FullName']))
 
             # Calculate team pace deltas
             laps = session.laps
-            quick_laps = laps.pick_quicklaps()
-
-            if quick_laps.empty:
-                # Handle races with no representative laps (e.g., very wet or short)
+            if laps.empty:
                 team_deltas = {d['TeamName']: 0.0 for d in drivers_data}
             else:
-                team_pace = quick_laps.groupby('Team')['LapTime'].median().apply(lambda x: x.total_seconds())
-                fastest_team_pace = team_pace.min()
-                team_deltas = (team_pace - fastest_team_pace).to_dict()
+                quick_laps = laps.pick_quicklaps()
+                if quick_laps.empty:
+                    # Handle races with no representative laps (e.g., very wet or short)
+                    team_deltas = {d['TeamName']: 0.0 for d in drivers_data}
+                else:
+                    team_pace = quick_laps.groupby('Team')['LapTime'].median().apply(lambda x: x.total_seconds())
+                    fastest_team_pace = team_pace.min()
+                    team_deltas = (team_pace - fastest_team_pace).to_dict()
 
             return {
                 "total_laps": session.total_laps,
@@ -217,12 +224,8 @@ def main_app():
                 "team_pace": team_deltas
             }
         except Exception as e:
-            st.warning(f"Could not load full session data for {year} {event_name}. Using defaults. Error: {e}")
-            return {
-                "total_laps": 55,
-                "drivers": [{"Abbr": "VER", "FullName": "Max Verstappen", "TeamName": "Red Bull Racing"}],
-                "team_pace": {"Red Bull Racing": 0.0}
-            }
+            st.error(f"An unexpected error occurred while processing session details: {e}")
+            return {"total_laps": 0, "drivers": [], "team_pace": {}}
 
     # --- Sidebar for Global Inputs ---
     st.sidebar.header("Race Settings")
@@ -245,6 +248,11 @@ def main_app():
         selected_event_name = st.sidebar.selectbox("Select Grand Prix", race_calendar.keys())
         
         session_details = get_session_details(selected_year, selected_event_name)
+
+        if not session_details.get("drivers"):
+            st.error(f"No driver data could be loaded for {selected_event_name} {selected_year}. Please select another event.")
+            st.stop()
+
         total_laps = session_details['total_laps']
         drivers_list = session_details['drivers']
         team_pace_deltas = session_details['team_pace']
@@ -327,4 +335,35 @@ if 'intro_complete' not in st.session_state:
 if not st.session_state.intro_complete:
     show_intro()
 else:
+    # Add CSS to reset intro styles and fade in the main application,
+    # creating a smooth transition.
+    st.markdown("""
+        <style>
+            /* --- CSS RESET FOR MAIN APP --- */
+            /* Undo intro styles that might leak from the previous page view */
+            html { overflow-y: auto !important; }
+            .stApp { background: none; }
+
+            /* --- CINEMATIC FADE-IN TRANSITION --- */
+            /* This creates a more dynamic entrance effect by combining a fade,
+               a slide-up, a slight zoom, and a de-blur. */
+            @keyframes cinematicFadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px) scale(0.98);
+                    filter: blur(3px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                    filter: blur(0);
+                }
+            }
+
+            /* Target the main container of the app content for a smooth entrance */
+            div[data-testid="stAppViewContainer"] {
+                animation: cinematicFadeIn 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            }
+        </style>
+    """, unsafe_allow_html=True)
     main_app()
