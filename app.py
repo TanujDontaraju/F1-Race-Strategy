@@ -25,71 +25,139 @@ def show_intro():
     """Displays an introductory screen with an F1 logo animation."""
     # --- Define paths for the logo files ---
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    logo_path = os.path.join(script_dir, "F1 Logo (Red).png")
-    intro_html_path = os.path.join(script_dir, "intro.html")
+    assets = {
+        "logo": os.path.join(script_dir, "F1 Logo (Red).png"),
+        "intro_html": os.path.join(script_dir, "intro.html"),
+        "intro_css": os.path.join(script_dir, "intro.css"),
+        "lights_sound": os.path.join(script_dir, "F1 Starting light sound.mp3"),
+        "engine_sound": os.path.join(script_dir, "Car Start.mp3")
+    }
 
-    # --- Check for logo files before starting ---
-    if not os.path.exists(logo_path) or not os.path.exists(intro_html_path):
-        st.error("Error: Missing asset file(s).")
-        if not os.path.exists(logo_path):
-            st.warning("- `F1 Logo (Red).png` is missing.")
-        if not os.path.exists(intro_html_path):
-            st.warning("- `intro.html` is missing.")
-        st.info(f"Please ensure both files are in the app directory: `{script_dir}`")
-        try:
-            files_in_dir = os.listdir(script_dir)
-            st.warning("Files currently in this folder:")
-            st.code("\n".join(sorted(files_in_dir)))
-        except Exception as e:
-            st.error(f"An error occurred while trying to list the directory contents: {e}")
+    # --- Check for asset files before starting ---
+    # The logo, HTML, and CSS are required. Audio is an optional enhancement.
+    if not all(os.path.exists(assets[key]) for key in ["logo", "intro_html", "intro_css"]):
+        st.error("Error: Missing critical asset file(s) (`F1 Logo (Red).png`, `intro.html`, or `intro.css`).")
         st.stop()
 
     # --- Prepare and render the HTML animation ---
-    def get_image_as_base64(path):
+    def get_file_as_base64(path):
+        """Reads a file and returns its base64 encoded version."""
+        if not os.path.exists(path):
+            return ""
         with open(path, "rb") as f:
             data = f.read()
         return base64.b64encode(data).decode()
 
-    logo_base64 = get_image_as_base64(logo_path)
-    with open(intro_html_path, "r") as f:
-        html_template = f.read()
-    
-    final_html = html_template.replace("{{LOGO_SRC}}", f"data:image/png;base64,{logo_base64}")
+    logo_base64 = get_file_as_base64(assets["logo"])
+    lights_sound_base64 = get_file_as_base64(assets["lights_sound"])
+    engine_base64 = get_file_as_base64(assets["engine_sound"])
 
+    # Read the CSS file content
+    with open(assets["intro_css"], "r") as f:
+        css_styles = f.read()
+
+    lights_sound_src = f"data:audio/mpeg;base64,{lights_sound_base64}" if lights_sound_base64 else ""
+    engine_src = f"data:audio/mpeg;base64,{engine_base64}" if engine_base64 else ""
+
+    with open(assets["intro_html"], "r") as f:
+        html_template = f.read()
+
+    # Inject the CSS and other assets into the HTML template
+    final_html = html_template.replace("{{CSS_STYLES}}", css_styles) \
+                              .replace("{{LOGO_SRC}}", f"data:image/png;base64,{logo_base64}") \
+                              .replace("{{LIGHTS_SOUND_SRC}}", lights_sound_src) \
+                              .replace("{{ENGINE_SRC}}", engine_src)
+
+    # NOTE: st.components.v1.html() renders content inside an <iframe>.
+    # That iframe is wrapped by Streamlit in a div with data-testid="stIFrame"
+    # (NOT "stHtml" -- that testid belongs to the separate st.html() function,
+    # which doesn't use an iframe at all). Targeting the wrong testid meant
+    # none of this fullscreen/centering CSS was ever being applied, so the
+    # component just sat at Streamlit's default iframe size near the top of
+    # the page -- which is why the animation looked "stuck" and the red
+    # flashes only filled that small box instead of the whole screen.
+    #
+    # We target the correct testid, plus a couple of fallbacks (different
+    # Streamlit versions have used slightly different testids for this),
+    # plus a bare `iframe` rule as a final safety net -- this block of CSS
+    # is only injected while the intro is showing, so there's only ever one
+    # iframe on the page at this point, making the blanket rule safe.
     st.markdown("""
         <style>
-        /* Prevent page shake by always showing the scrollbar */
-        html { overflow-y: scroll; }
+        /* Prevent scrolling on the intro page */
+        html { overflow-y: hidden !important; }
         .stApp { background-color: #000000; }
+
+        /* Make the HTML component container fill the viewport */
+        div[data-testid="stIFrame"],
+        div[data-testid="stCustomComponentV1"],
+        div[data-testid="stHtml"] {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            overflow: hidden !important; /* Prevent container from showing scrollbars */
+        }
+
+        /* Ensure the iframe inside fills this container */
+        div[data-testid="stIFrame"] > iframe,
+        div[data-testid="stCustomComponentV1"] > iframe,
+        div[data-testid="stHtml"] > iframe,
+        iframe {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important; /* Use !important to override Streamlit's default inline height */
+            border: none !important; /* Remove default iframe border */
+        }
         
-        /* Style the button to appear after the animation (8.5s total) */
-        [data-testid="stButton"] {
+        /* Style for the main "Enter" button, which appears after the animation */
+        div[data-testid="stButton"] {
+            position: fixed !important;
+            top: 65%; /* Position under the centered logo */
+            left: 50%;
+            transform: translateX(-50%);
+            width: auto !important; /* Override Streamlit's default width */
+            z-index: 10;
             opacity: 0;
-            animation: fadeIn 1s ease-in-out 8.5s forwards;
+            animation: fadeIn 1s ease-in-out 6s forwards; /* Sync with logo fade-in */
         }
         @keyframes fadeIn {
             from { opacity: 0; }
-            to   { opacity: 1; transform: scale(1); }
+            to   { opacity: 1; }
+        }
+        div[data-testid="stButton"] > button {
+            background-color: transparent;
+            color: #E10600; /* F1 Red */
+            border: 2px solid #E10600;
+            border-radius: 30px; /* Make it more rounded */
+            font-weight: bold;
+            text-transform: uppercase;
+            padding: 10px 24px;
+            transition: all 0.3s ease-in-out;
+        }
+        div[data-testid="stButton"] > button:hover {
+            background-color: #E10600;
+            color: #FFFFFF;
+            border-color: #E10600;
+            box-shadow: 0 0 20px #E10600;
+            transform: scale(1.05);
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # Render the HTML component with the animation
-    st.components.v1.html(final_html, height=400)
+    # Render the HTML component with the animation.
+    # Passing an explicit height + scrolling=False as a fallback in case the
+    # CSS above hasn't painted yet on first render.
+    st.components.v1.html(final_html, height=1000, scrolling=False)
 
-    # Display the button. The CSS above handles its delayed appearance.
-    _, col_btn, _ = st.columns([2, 1, 2])
-    with col_btn:
-        if st.button("Enter the Pit Lane", use_container_width=True):
-            st.session_state.intro_complete = True
-            # Reset styles for the main app to prevent them from carrying over
-            st.markdown("""
-                <style>
-                .stApp { background: none; }
-                html { overflow-y: auto; } /* Restore default scrollbar behavior */
-                </style>
-            """, unsafe_allow_html=True)
-            st.rerun()
+    if st.button("Enter the Pit Lane"):
+        st.session_state.intro_complete = True
+        # The CSS reset logic has been moved to the main app's rendering block
+        # for better control. This simply triggers the state change and rerun.
+        st.rerun()
 
 def main_app():
     # --- Main Title ---
@@ -123,48 +191,71 @@ def main_app():
             session = fastf1.get_session(year, event_name, 'R')
             # Load all data except for telemetry, which is bulky and can be problematic for older seasons
             session.load(telemetry=False, weather=False, messages=False)
+        except Exception as e:
+            st.warning(f"Could not load session data for {year} {event_name}. FastF1 may not have data for this event. Error: {e}")
+            return {
+                "total_laps": 0,
+                "drivers": [],
+                "team_pace": {}
+            }
 
-            # Now that data should be loaded, extract driver info.
-            drivers_data = []
-            # The session.results property is the most reliable source for FullName if available
-            if hasattr(session, 'results') and not session.results.empty:
+        drivers_data = []
+        try:
+            # For modern seasons (approx. 2018+), session.results is well-structured.
+            # For older seasons, it may be missing columns (like 'FullName'), causing errors.
+            # This try/except block attempts to use the modern structure and falls back to a more
+            # robust method for older data.
+            try:
+                if not hasattr(session, 'results') or session.results.empty:
+                    raise ValueError("No session.results found, using fallback.")
+
                 for row in session.results.itertuples():
                     drivers_data.append({
                         'Abbr': row.Abbreviation,
                         'FullName': row.FullName,
                         'TeamName': row.TeamName
                     })
-            # If session.results is not available (common in older seasons), fall back to laps
-            else:
-                driver_numbers = session.laps['DriverNumber'].unique()
-                for drv_num in driver_numbers:
-                    driver_laps = session.laps.pick_driver(drv_num)
-                    if not driver_laps.empty:
-                        driver_info = driver_laps.iloc[0]
-                        # Use .get() to safely access 'FullName', falling back to the abbreviation
-                        full_name = driver_info.get('FullName', driver_info['Driver'])
-                        drivers_data.append({
-                            'Abbr': driver_info['Driver'],
-                            'FullName': full_name,
-                            'TeamName': driver_info['Team']
-                        })
+                if not drivers_data:
+                    raise ValueError("Results were empty, using fallback.")
+            except (AttributeError, ValueError):
+                # Fallback for older seasons: Use lap data, which is more consistent.
+                drivers_data = []  # Ensure list is clean before filling
+                if hasattr(session, 'laps') and not session.laps.empty and 'Driver' in session.laps.columns:
+                    driver_abbreviations = session.laps['Driver'].unique()
+                    for drv_abbr in driver_abbreviations:
+                        driver_laps = session.laps.pick_driver(drv_abbr)
+                        if not driver_laps.empty:
+                            driver_info = driver_laps.iloc[0]
+                            # Safely get required info
+                            abbr = driver_info.get('Driver')
+                            team = driver_info.get('Team')
+                            if abbr and team:
+                                full_name = driver_info.get('FullName', abbr)
+                                drivers_data.append({
+                                    'Abbr': abbr,
+                                    'FullName': full_name,
+                                    'TeamName': team
+                                })
 
             if not drivers_data:
-                raise ValueError("Could not extract any driver data from the session.")
+                st.warning(f"Could not extract any driver data for {year} {event_name}. The data may be incomplete.")
+                return {"total_laps": getattr(session, 'total_laps', 55), "drivers": [], "team_pace": {}}
 
             drivers_data = sorted(drivers_data, key=lambda x: (x['TeamName'], x['FullName']))
 
             # Calculate team pace deltas
             laps = session.laps
-            quick_laps = laps.pick_quicklaps()
-
-            if quick_laps.empty:
-                # Handle races with no representative laps (e.g., very wet or short)
+            if laps.empty:
                 team_deltas = {d['TeamName']: 0.0 for d in drivers_data}
             else:
-                team_pace = quick_laps.groupby('Team')['LapTime'].median().apply(lambda x: x.total_seconds())
-                fastest_team_pace = team_pace.min()
-                team_deltas = (team_pace - fastest_team_pace).to_dict()
+                quick_laps = laps.pick_quicklaps()
+                if quick_laps.empty:
+                    # Handle races with no representative laps (e.g., very wet or short)
+                    team_deltas = {d['TeamName']: 0.0 for d in drivers_data}
+                else:
+                    team_pace = quick_laps.groupby('Team')['LapTime'].median().apply(lambda x: x.total_seconds())
+                    fastest_team_pace = team_pace.min()
+                    team_deltas = (team_pace - fastest_team_pace).to_dict()
 
             return {
                 "total_laps": session.total_laps,
@@ -172,12 +263,8 @@ def main_app():
                 "team_pace": team_deltas
             }
         except Exception as e:
-            st.warning(f"Could not load full session data for {year} {event_name}. Using defaults. Error: {e}")
-            return {
-                "total_laps": 55,
-                "drivers": [{"Abbr": "VER", "FullName": "Max Verstappen", "TeamName": "Red Bull Racing"}],
-                "team_pace": {"Red Bull Racing": 0.0}
-            }
+            st.error(f"An unexpected error occurred while processing session details: {e}")
+            return {"total_laps": 0, "drivers": [], "team_pace": {}}
 
     # --- Sidebar for Global Inputs ---
     st.sidebar.header("Race Settings")
@@ -200,6 +287,11 @@ def main_app():
         selected_event_name = st.sidebar.selectbox("Select Grand Prix", race_calendar.keys())
         
         session_details = get_session_details(selected_year, selected_event_name)
+
+        if not session_details.get("drivers"):
+            st.error(f"No driver data could be loaded for {selected_event_name} {selected_year}. Please select another event.")
+            st.stop()
+
         total_laps = session_details['total_laps']
         drivers_list = session_details['drivers']
         team_pace_deltas = session_details['team_pace']
@@ -282,4 +374,35 @@ if 'intro_complete' not in st.session_state:
 if not st.session_state.intro_complete:
     show_intro()
 else:
+    # Add CSS to reset intro styles and fade in the main application,
+    # creating a smooth transition.
+    st.markdown("""
+        <style>
+            /* --- CSS RESET FOR MAIN APP --- */
+            /* Undo intro styles that might leak from the previous page view */
+            html { overflow-y: auto !important; }
+            .stApp { background: none; }
+
+            /* --- CINEMATIC FADE-IN TRANSITION --- */
+            /* This creates a more dynamic entrance effect by combining a fade,
+               a slide-up, a slight zoom, and a de-blur. */
+            @keyframes cinematicFadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px) scale(0.98);
+                    filter: blur(3px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                    filter: blur(0);
+                }
+            }
+
+            /* Target the main container of the app content for a smooth entrance */
+            div[data-testid="stAppViewContainer"] {
+                animation: cinematicFadeIn 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            }
+        </style>
+    """, unsafe_allow_html=True)
     main_app()

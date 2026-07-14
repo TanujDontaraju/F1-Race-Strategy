@@ -8,7 +8,6 @@ cars, and performance variability.
 undercut vs overcut).
 
 ## Setup and Run Instructions
-
 To get this project up and running on your local machine, follow these steps:
 
 ### Prerequisites
@@ -21,18 +20,12 @@ Make sure you have Python 3.x installed.
     ```bash
     cd path/to/F1
     ```
-
-2.  **(Recommended) Create and activate a virtual environment:**
-    This keeps your project dependencies isolated.
+2.  **(Optional but Recommended) Create and activate a virtual environment:**
     ```bash
     python -m venv venv
-    # On Windows
-    .\venv\Scripts\activate
-    # On macOS/Linux
-    # source venv/bin/activate
+    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
     ```
-
-3.  **Install the required Python packages using `requirements.txt`:**
+3.  **Install the required packages from `requirements.txt`:**
     ```bash
     pip install -r requirements.txt
     ```
