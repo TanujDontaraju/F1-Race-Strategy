@@ -57,9 +57,95 @@ def show_intro():
     # Inject the CSS and logo into the HTML template
     final_html = html_template.replace("{{CSS_STYLES}}", css_styles) \
                               .replace("{{LOGO_SRC}}", f"data:image/png;base64,{logo_base64}")
+
+    # NOTE: st.components.v1.html() renders content inside an <iframe>.
+    # To make the animation fullscreen, we must apply CSS to the iframe's
+    # container, which is managed by Streamlit. The selectors below target
+    # this container and the button to achieve the desired layout.
+    st.markdown("""
+        <style>
+        /* --- INTRO STYLES --- */
+        /* Force the entire page to be non-scrollable by targeting all potential parent containers,
+           including Streamlit's actual scrollable wrapper elements (.main / block-container),
+           which the previous selector list didn't reach. */
+        html, body,
+        div[data-testid="stAppViewContainer"],
+        div[data-testid="stVerticalBlock"],
+        div[data-testid="stMain"],
+        section[data-testid="stMain"],
+        div[data-testid="block-container"],
+        .main, .block-container {
+            overflow: hidden !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
+        }
+        .stApp { background-color: #000000; overflow: hidden !important; }
+
+        /* Make the HTML component container fill the viewport */
+        div[data-testid="stIFrame"],
+        div[data-testid="stCustomComponentV1"] {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            overflow: hidden !important;
+        }
+
+        /* Ensure the iframe inside fills this container */
+        div[data-testid="stIFrame"] > iframe,
+        div[data-testid="stCustomComponentV1"] > iframe {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            border: none !important;
+        }
+
+        /* Style for the main "Enter" button, which appears after the animation */
+        div[data-testid="stButton"] {
+            position: fixed !important;
+            top: 65%; /* Position under the centered logo */
+            left: 50%;
+            transform: translateX(-50%);
+            width: auto !important;
+            z-index: 10;
+            opacity: 0;
+            animation: fadeIn 1s ease-in-out 6s forwards; /* Sync with logo fade-in */
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+        div[data-testid="stButton"] > button {
+            background-color: transparent;
+            color: #E10600; /* F1 Red */
+            border: 2px solid #E10600;
+            border-radius: 30px;
+            font-weight: bold;
+            text-transform: uppercase;
+            padding: 10px 24px;
+            transition: all 0.3s ease-in-out;
+        }
+        div[data-testid="stButton"] > button:hover {
+            background-color: #E10600;
+            color: #FFFFFF;
+            border-color: #E10600;
+            box-shadow: 0 0 20px #E10600;
+            transform: scale(1.05);
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     # Render the HTML component with the animation.
     # Passing an explicit height + scrolling=False as a fallback in case the
-    # CSS above hasn't painted yet on first render.
+    # height is capped to a typical viewport height (rather than the previous
+    # 1000px) so the component can't reserve more vertical space than the
+    # screen before our CSS override (position: fixed) takes over, which
+    # was what allowed the page to become scrollable on shorter screens.
+    # scrolling=False is kept as a fallback in case the CSS hasn't painted
+    # yet on first render.
     st.components.v1.html(final_html, height=800, scrolling=False)
 
     if st.button("Enter the Pit Lane"):
@@ -95,13 +181,13 @@ def main_app():
         """
         Gets session details: total laps, driver list, and team pace deltas.
         Returns a dictionary with 'total_laps', 'drivers', and 'team_pace'.
-
-        NOTE: FastF1's lap-by-lap timing data (laps, tire compounds, pit
-        stops, pace) is sourced from the F1 live-timing API, which only has
-        coverage from 2018 onward. Seasons before that will load a Session
-        object fine, but session.laps will be empty/unusable, which is why
-        this function -- and the sidebar season selector -- restrict
-        analysis to EARLIEST_SUPPORTED_YEAR and later.
+        
+        NOTE: FastF1's lap-by-lap timing data (laps, tire compounds, pit 
+        stops, pace) is sourced from the F1 live-timing API, which only has 
+        coverage from 2018 onward. Seasons before that will load a Session 
+        object fine, but session.laps will be empty/unusable, which is why 
+        this function -- and the sidebar season selector -- restrict 
+        analysis to EARLIEST_SUPPORTED_YEAR and later. 
         """
         try:
             session = fastf1.get_session(year, event_name, 'R')
@@ -115,15 +201,15 @@ def main_app():
                 "team_pace": {}
             }
 
-        # Explicitly check FastF1's own flag for whether this session has
-        # live-timing (lap-level) data available, rather than letting a
-        # missing-data error surface later when we try to read session.laps.
+        # Explicitly check FastF1's own flag for whether this session has 
+        # live-timing (lap-level) data available, rather than letting a 
+        # missing-data error surface later when we try to read session.laps. 
         if not getattr(session, 'f1_api_support', True):
             st.warning(
                 f"{year} {event_name} predates FastF1's detailed timing data "
                 f"(available from {EARLIEST_SUPPORTED_YEAR} onward). Lap times, "
                 f"tire stints, and pit stops aren't available for this season, "
-                f"so strategy simulation can't be run."
+                f"so strategy simulation can't be run." 
             )
             return {"total_laps": 0, "drivers": [], "team_pace": {}}
 
@@ -200,9 +286,9 @@ def main_app():
 
     st.sidebar.header("Race Settings")
     current_year = datetime.date.today().year
-    # Only 2018+ seasons have the F1 live-timing data FastF1 needs for lap
-    # times, tire stints, and pit stops. Earlier seasons are excluded here
-    # rather than allowed to fail deeper in the pipeline.
+    # Only 2018+ seasons have the F1 live-timing data FastF1 needs for lap 
+    # times, tire stints, and pit stops. Earlier seasons are excluded here 
+    # rather than allowed to fail deeper in the pipeline. 
     selected_year = st.sidebar.selectbox(
         "Select Season", range(current_year, EARLIEST_SUPPORTED_YEAR - 1, -1)
     )
@@ -314,4 +400,170 @@ if 'intro_complete' not in st.session_state:
 if not st.session_state.intro_complete:
     show_intro()
 else:
+    # Add CSS to reset intro styles and fade in the main application,
+    # creating a smooth transition.
+    st.markdown("""
+        <style>
+            /* --- CSS RESET FOR MAIN APP --- */
+            html, body, div[data-testid="stAppViewContainer"], div[data-testid="stVerticalBlock"] {
+                overflow: auto !important;
+            }
+            .stApp { background: none; }
+
+            /* --- CINEMATIC FADE-IN TRANSITION --- */
+            @keyframes cinematicFadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px) scale(0.98);
+                    filter: blur(3px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                    filter: blur(0);
+                }
+            }
+
+            div[data-testid="stAppViewContainer"] {
+                animation: cinematicFadeIn 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    main_app()
+        f"Detailed timing data is only available from FastF1 for "
+        f"{EARLIEST_SUPPORTED_YEAR} onward, so earlier seasons aren't listed."
+    )
+
+    try:
+        schedule = fastf1.get_event_schedule(selected_year, include_testing=False)
+
+        # Filter schedule to only include events that have already happened
+        today = datetime.date.today()
+        past_events_schedule = schedule[schedule['EventDate'].dt.date < today]
+
+        race_calendar = {event['EventName']: event['RoundNumber'] for index, event in past_events_schedule.iterrows() if event['EventName']}
+        
+        if not race_calendar:
+            st.sidebar.warning(f"No past races found in {selected_year} to analyze.")
+            st.stop()
+
+        selected_event_name = st.sidebar.selectbox("Select Grand Prix", race_calendar.keys())
+        
+        session_details = get_session_details(selected_year, selected_event_name)
+
+        if not session_details.get("drivers"):
+            st.error(f"No driver data could be loaded for {selected_event_name} {selected_year}. Please select another event.")
+            st.stop()
+
+        total_laps = session_details['total_laps']
+        drivers_list = session_details['drivers']
+        team_pace_deltas = session_details['team_pace']
+
+        base_lap_time = st.sidebar.number_input("Fastest Car Pace (on Mediums, seconds)", value=90.0, format="%.2f")
+        pit_stop_loss = st.sidebar.number_input("Pit Stop Time Loss (seconds)", value=21.0, format="%.1f")
+
+    except Exception as e:
+        st.sidebar.error(f"An error occurred fetching race data: {e}")
+        st.stop()
+
+    # --- Main Area for Strategy Definition ---
+    st.header("Define Your Strategy")
+
+    driver_options = [f"{d['FullName']} ({d['Abbr']})" for d in drivers_list]
+    selected_driver_str = st.selectbox("Select Driver", driver_options)
+
+    pit_stops_input = st.text_input("Pit Stop Laps (comma-separated, e.g., 15, 40)", "28")
+
+    num_pits = len(pit_stops_input.split(',')) if pit_stops_input.strip() else 0
+    tire_sequence = []
+    st.subheader("Tire Stint Plan")
+    tire_sequence.append(st.selectbox("Start Tire", TIRE_COMPOUNDS.keys(), index=1)) # Default to MEDIUM
+    for i in range(num_pits):
+        tire_sequence.append(st.selectbox(f"Stint {i+2} Tire", TIRE_COMPOUNDS.keys(), index=2, key=f"stint_{i+1}")) # Default to HARD
+
+    # --- Simulation Execution ---
+    if st.button("Simulate Race Strategy"):
+        try:
+            # --- Process and Run Strategy ---
+            pit_stop_laps = [int(lap.strip()) for lap in pit_stops_input.split(',') if lap.strip()]
+            
+            # Validate that the number of tires matches the number of stints
+            if len(tire_sequence) != (len(pit_stop_laps) + 1):
+                st.error("The number of tire choices must match the number of stints (number of pit stops + 1).")
+            else:
+                # Find selected driver's details
+                selected_driver_abbr = selected_driver_str.split('(')[-1][:-1]
+                driver_details = next((d for d in drivers_list if d['Abbr'] == selected_driver_abbr), None)
+                driver_name = driver_details['Abbr'] if driver_details else "DRIVER"
+                team_name = driver_details['TeamName'] if driver_details else "TEAM"
+                
+                # Get the pace delta for the car
+                pace_delta = team_pace_deltas.get(team_name, 0.0)
+
+                strategy = Strategy(pit_stops=pit_stop_laps, tire_sequence=tire_sequence, pit_stop_loss=pit_stop_loss)
+                car = Car(base_lap_time=base_lap_time, pace_delta=pace_delta)
+                driver = Driver(name=driver_name)
+                simulator = SimulationEngine(total_laps=total_laps, car=car, driver=driver)
+                results = simulator.run_simulation(strategy, TIRE_COMPOUNDS)
+                
+                # --- Display Results ---
+                results_df = pd.DataFrame(results)
+                
+                st.header(f"Simulated Race Results for {driver_name} at {selected_event_name}")
+                
+                total_race_time_seconds = results_df['lap_time'].sum()
+                minutes = int(total_race_time_seconds // 60)
+                seconds = total_race_time_seconds % 60
+                
+                col1, col2 = st.columns(2)
+                col1.metric(label="Total Race Time", value=f"{minutes}m {seconds:.2f}s")
+                col2.metric(label=f"{team_name} Pace Delta", value=f"+{pace_delta:.3f}s / lap")
+
+                st.subheader("Lap Time Chart")
+                st.line_chart(results_df.set_index('lap_number')['lap_time'])
+
+                st.subheader("Race Data")
+                st.dataframe(results_df)
+
+        except Exception as e:
+            st.error(f"An error occurred during simulation: {e}")
+    else:
+        st.info("Configure your strategy above and click 'Simulate Race Strategy'.")
+
+# --- App Execution ---
+if 'intro_complete' not in st.session_state:
+    st.session_state.intro_complete = False
+
+if not st.session_state.intro_complete:
+    show_intro()
+else:
+    # Add CSS to reset intro styles and fade in the main application,
+    # creating a smooth transition.
+    st.markdown("""
+        <style>
+            /* --- CSS RESET FOR MAIN APP --- */
+            html, body, div[data-testid="stAppViewContainer"], div[data-testid="stVerticalBlock"] {
+                overflow: auto !important;
+            }
+            .stApp { background: none; }
+
+            /* --- CINEMATIC FADE-IN TRANSITION --- */
+            @keyframes cinematicFadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px) scale(0.98);
+                    filter: blur(3px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                    filter: blur(0);
+                }
+            }
+
+            div[data-testid="stAppViewContainer"] {
+                animation: cinematicFadeIn 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            }
+        </style>
+    """, unsafe_allow_html=True)
     main_app()
