@@ -1,0 +1,11 @@
+{
+  "2024": [
+    { "eventName": "Bahrain Grand Prix", "roundNumber": 1 },
+    { "eventName": "Saudi Arabian Grand Prix", "roundNumber": 2 },
+    { "eventName": "Miami Grand Prix", "roundNumber": 6 }
+  ],
+  "2023": [
+    { "eventName": "Bahrain Grand Prix", "roundNumber": 1 },
+    { "eventName": "Monaco Grand Prix", "roundNumber": 7 }
+  ]
+}

@@ -8,3 +8,17 @@ venv/
 # Python bytecode and artifacts
 __pycache__/
 *.pyc
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+.env*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
