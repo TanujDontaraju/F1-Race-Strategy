@@ -1,42 +1,8 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
-import { ReactNode } from "react";
+import Dropdown from "@/components/telemetry/Dropdown";
 import { useTelemetryStore } from "@/lib/telemetry/store";
 import { Session } from "@/lib/telemetry/types";
-
-function Select({
-  label,
-  value,
-  onChange,
-  disabled,
-  children,
-}: {
-  label: string;
-  value: string | number;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <select
-        aria-label={label}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className="appearance-none rounded-full border border-white/10 bg-white/[0.07] py-1.5 pl-3.5 pr-8 text-sm font-medium text-white transition-colors hover:bg-white/[0.11] disabled:opacity-40"
-      >
-        {children}
-      </select>
-      <ChevronDown
-        size={14}
-        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/60"
-        aria-hidden
-      />
-    </div>
-  );
-}
 
 function groupByMeeting(sessions: Session[]): Session[][] {
   const groups = new Map<number, Session[]>();
@@ -74,37 +40,27 @@ export default function SessionPicker() {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select label="Season" value={year} onChange={(v) => void loadYear(Number(v))} disabled={years.length < 2}>
-        {years.map((y) => (
-          <option key={y} value={y}>
-            {y}
-          </option>
-        ))}
-      </Select>
-      <Select
+      <Dropdown
+        label="Season"
+        value={String(year)}
+        options={years.map((y) => ({ value: String(y), label: String(y) }))}
+        onChange={(v) => void loadYear(Number(v))}
+        disabled={years.length < 2}
+      />
+      <Dropdown
         label="Grand Prix"
-        value={session?.meeting_key ?? ""}
+        value={String(session?.meeting_key ?? "")}
+        options={meetings.map((weekend) => ({ value: String(weekend[0].meeting_key), label: meetingLabel(weekend) }))}
         onChange={handleMeetingChange}
         disabled={meetings.length === 0}
-      >
-        {meetings.map((weekend) => (
-          <option key={weekend[0].meeting_key} value={weekend[0].meeting_key}>
-            {meetingLabel(weekend)}
-          </option>
-        ))}
-      </Select>
-      <Select
+      />
+      <Dropdown
         label="Session"
-        value={session?.session_key ?? ""}
+        value={String(session?.session_key ?? "")}
+        options={meetingSessions.map((s) => ({ value: String(s.session_key), label: s.session_name }))}
         onChange={(v) => void selectSession(Number(v))}
         disabled={meetingSessions.length === 0}
-      >
-        {meetingSessions.map((s) => (
-          <option key={s.session_key} value={s.session_key}>
-            {s.session_name}
-          </option>
-        ))}
-      </Select>
+      />
     </div>
   );
 }

@@ -1,12 +1,19 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import GlassPanel from "@/components/telemetry/GlassPanel";
 import TyreBadge from "@/components/telemetry/TyreBadge";
+import { useGlassHighlight } from "@/components/telemetry/useGlassHighlight";
 import { buildLeaderboard, phaseLabelAt } from "@/lib/telemetry/derive";
 import { teamColour } from "@/lib/telemetry/format";
 import { useTelemetryStore } from "@/lib/telemetry/store";
+
+/** The row to mark with the lighter hover glass; the selected driver already has its own glass. */
+function hoverRowOf(target: EventTarget) {
+  const row = (target as Element).closest<HTMLElement>("li[data-row]");
+  return row?.querySelector('[aria-pressed="true"]') ? null : row;
+}
 
 export default function LeaderboardPanel() {
   const session = useTelemetryStore((s) => s.session);
@@ -15,6 +22,8 @@ export default function LeaderboardPanel() {
   const displayCursor = useTelemetryStore((s) => s.displayCursor);
   const selectedDriver = useTelemetryStore((s) => s.selectedDriver);
   const selectDriver = useTelemetryStore((s) => s.selectDriver);
+  const { ref: highlightRef, moveTo: moveHighlight, trackPointer } = useGlassHighlight<HTMLLIElement>();
+  const pointerInside = useRef(false);
 
   const isRace = session?.session_type === "Race";
   const rows = useMemo(
@@ -42,18 +51,39 @@ export default function LeaderboardPanel() {
       {rows.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-white/50">No timing data</p>
       ) : (
-        <ol className="min-h-0 flex-1 overflow-y-auto py-2">
+        <ol
+          className="relative min-h-0 flex-1 overflow-y-auto py-2"
+          onPointerMove={(e) => {
+            pointerInside.current = true;
+            trackPointer(e);
+            moveHighlight(hoverRowOf(e.target));
+          }}
+          onPointerLeave={() => {
+            pointerInside.current = false;
+            moveHighlight(null);
+          }}
+          onFocus={(e) => {
+            if ((e.target as Element).matches(":focus-visible")) moveHighlight(hoverRowOf(e.target));
+          }}
+          onBlur={(e) => {
+            if (!pointerInside.current && !e.currentTarget.contains(e.relatedTarget as Node | null)) moveHighlight(null);
+          }}
+        >
+          <li ref={highlightRef} aria-hidden className="glass-hover rounded-2xl" />
           {rows.map((row) => {
             const selected = row.driverNumber === selectedDriver;
             return (
-              <li key={row.driverNumber}>
+              <li key={row.driverNumber} data-row className="relative">
                 <button
                   type="button"
-                  onClick={() => selectDriver(row.driverNumber)}
+                  onClick={() => {
+                    moveHighlight(null);
+                    selectDriver(row.driverNumber);
+                  }}
                   aria-pressed={selected}
                   aria-label={`P${row.position ?? "–"} ${row.driver.full_name}, ${row.gapLabel}`}
-                  className={`grid w-full grid-cols-[1.5rem_3px_1fr_auto_20px] items-center gap-2.5 rounded-2xl px-3 py-[5px] text-left transition-[background-color,transform] duration-100 ease-out active:scale-[0.98] ${
-                    selected ? "bg-white/[0.12]" : "hover:bg-white/[0.05]"
+                  className={`grid w-full grid-cols-[1.5rem_3px_1fr_auto_20px] items-center gap-2.5 rounded-2xl px-3 py-[5px] text-left outline-none transition-transform focus-visible:ring-1 focus-visible:ring-white/50 duration-100 ease-out active:scale-[0.98] ${
+                    selected ? "glass-row-selected" : ""
                   }`}
                 >
                   <span className="text-right text-sm font-medium tabular-nums text-white/60">

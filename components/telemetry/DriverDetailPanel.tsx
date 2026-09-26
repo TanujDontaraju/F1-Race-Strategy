@@ -3,11 +3,14 @@
 import Image from "next/image";
 import { ReactNode, useState } from "react";
 import GlassPanel from "@/components/telemetry/GlassPanel";
+import SegmentedControl from "@/components/telemetry/SegmentedControl";
 import TyreBadge, { tyreLabel } from "@/components/telemetry/TyreBadge";
 import { telemetryBuffer } from "@/lib/telemetry/buffer";
 import { bestLap, completedLaps, currentLap, positionAt, tyreAt } from "@/lib/telemetry/derive";
-import { formatGap, formatLapTime, largeHeadshot, teamColour } from "@/lib/telemetry/format";
+import { formatGap, formatLapTime, teamColour } from "@/lib/telemetry/format";
+import { driverPortraits } from "@/lib/telemetry/portrait";
 import { useTelemetryStore } from "@/lib/telemetry/store";
+import { Driver } from "@/lib/telemetry/types";
 
 const TABS = ["Telemetry", "Timing", "Tyres"] as const;
 type Tab = (typeof TABS)[number];
@@ -18,6 +21,35 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
       <dt className="text-sm text-white/65">{label}</dt>
       <dd className="text-sm font-semibold tabular-nums">{children}</dd>
     </dl>
+  );
+}
+
+function DriverPortrait({ driver, year }: { driver: Driver; year: number }) {
+  const [attempt, setAttempt] = useState(0);
+  const portrait = driverPortraits(driver, year)[attempt];
+
+  if (!portrait) {
+    return (
+      <div className="flex h-full items-center justify-center text-4xl font-bold text-white/40">
+        {driver.name_acronym}
+      </div>
+    );
+  }
+  return (
+    <Image
+      key={portrait.src}
+      src={portrait.src}
+      alt={driver.full_name}
+      width={portrait.width}
+      height={portrait.height}
+      unoptimized
+      onError={() => setAttempt((a) => a + 1)}
+      className={
+        portrait.fullBody
+          ? "absolute bottom-0 left-1/2 aspect-[4/3] h-[calc(100%-1rem)] w-auto -translate-x-1/2 object-cover object-top"
+          : "absolute inset-x-0 bottom-0 mx-auto h-full w-auto object-contain object-bottom"
+      }
+    />
   );
 }
 
@@ -74,19 +106,7 @@ export default function DriverDetailPanel() {
         className="relative h-44 shrink-0 overflow-hidden rounded-[20px]"
         style={{ background: `radial-gradient(120% 90% at 50% 100%, ${colour}66, transparent 70%), rgba(255,255,255,0.04)` }}
       >
-        {driver.headshot_url ? (
-          <Image
-            src={largeHeadshot(driver.headshot_url)}
-            alt={driver.full_name}
-            width={432}
-            height={432}
-            className="absolute inset-x-0 bottom-0 mx-auto h-full w-auto object-contain object-bottom"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-4xl font-bold text-white/40">
-            {driver.name_acronym}
-          </div>
-        )}
+        <DriverPortrait key={`${session?.year}-${n}`} driver={driver} year={session?.year ?? new Date().getFullYear()} />
       </div>
 
       <div className="flex items-end gap-3 px-1">
@@ -104,22 +124,7 @@ export default function DriverDetailPanel() {
         {driver.team_name}
       </p>
 
-      <div role="tablist" aria-label="Driver data" className="grid grid-cols-3 gap-1 rounded-full bg-black/30 p-1">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={`rounded-full py-1.5 text-xs font-semibold transition-[background-color,color,transform] duration-100 ease-out active:scale-95 ${
-              tab === t ? "bg-white/15 text-white" : "text-white/55 hover:text-white/80"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl label="Driver data" options={TABS} value={tab} onChange={setTab} />
 
       <div className="px-1" role="tabpanel" aria-label={tab}>
         {tab === "Telemetry" &&

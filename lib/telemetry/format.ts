@@ -4,11 +4,6 @@ export function teamColour(driver: Driver | undefined): string {
   return driver?.team_colour ? `#${driver.team_colour}` : "#8e8e93";
 }
 
-/** OpenF1 returns the 93px "1col" headshot; "4col" is the same image at 432px. */
-export function largeHeadshot(url: string): string {
-  return url.replace("/1col/", "/4col/");
-}
-
 /** OpenF1 timestamps carry microseconds; trim to milliseconds so every engine parses them. */
 export function parseDate(iso: string): number {
   return Date.parse(iso.replace(/(\.\d{3})\d+/, "$1"));

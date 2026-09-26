@@ -2,6 +2,7 @@
 
 import { Pause, Play, RotateCcw } from "lucide-react";
 import { CSSProperties } from "react";
+import SegmentedControl from "@/components/telemetry/SegmentedControl";
 import { formatClock, formatDuration } from "@/lib/telemetry/format";
 import { PLAYBACK_SPEEDS, useTelemetryStore } from "@/lib/telemetry/store";
 
@@ -64,21 +65,15 @@ export default function PlaybackControls() {
         {isBuffering ? "Buffering…" : ready ? `${formatDuration(time - start)} / ${formatDuration(end - start)}` : ""}
       </span>
 
-      <div role="group" aria-label="Playback speed" className="ml-auto flex rounded-full bg-black/30 p-1 sm:ml-0">
-        {PLAYBACK_SPEEDS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setSpeed(s)}
-            aria-pressed={speed === s}
-            className={`rounded-full px-3 py-1 text-xs font-semibold tabular-nums transition-[background-color,color,transform] duration-100 ease-out active:scale-95 ${
-              speed === s ? "bg-white/15 text-white" : "text-white/55 hover:text-white/80"
-            }`}
-          >
-            {s}×
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        kind="radio"
+        label="Playback speed"
+        options={PLAYBACK_SPEEDS}
+        value={speed}
+        onChange={setSpeed}
+        getLabel={(s) => `${s}×`}
+        className="ml-auto sm:ml-0"
+      />
     </div>
   );
 }
