@@ -9,8 +9,9 @@ import TrackMap from "@/components/telemetry/TrackMap";
 import { useTelemetryStore } from "@/lib/telemetry/store";
 import { usePlaybackEngine } from "@/lib/telemetry/usePlaybackEngine";
 
-export default function TelemetryDashboard() {
-  usePlaybackEngine();
+/** `active` is false while the dashboard loads behind the intro, so playback waits for you to enter. */
+export default function TelemetryDashboard({ active = true }: { active?: boolean }) {
+  usePlaybackEngine(active);
 
   useEffect(() => {
     const { loadYear, year } = useTelemetryStore.getState();

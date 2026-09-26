@@ -4,11 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import GlassPanel from "@/components/telemetry/GlassPanel";
 import { telemetryBuffer } from "@/lib/telemetry/buffer";
 import { sessionStats } from "@/lib/telemetry/derive";
+import { drawTrack, TRACK_MAP_PADDING } from "@/lib/telemetry/drawTrack";
 import { formatLapTime, teamColour } from "@/lib/telemetry/format";
 import { fitToCanvas, Point, TrackGeometry } from "@/lib/telemetry/geometry";
 import { useTelemetryStore } from "@/lib/telemetry/store";
 
-const PADDING = 40;
 const CAR_RADIUS = 5;
 const SELECTED_RADIUS = 7;
 const HIT_RADIUS = 16;
@@ -26,50 +26,7 @@ function drawStaticLayer(
   layer.height = Math.round(height * dpr);
   const ctx = layer.getContext("2d")!;
   ctx.scale(dpr, dpr);
-
-  const points = track.outline.map(toScreen);
-  const path = new Path2D();
-  points.forEach((p, i) => (i === 0 ? path.moveTo(p.x, p.y) : path.lineTo(p.x, p.y)));
-  path.closePath();
-
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
-  ctx.lineWidth = 16;
-  ctx.stroke(path);
-  ctx.shadowColor = "rgba(255, 255, 255, 0.6)";
-  ctx.shadowBlur = 14;
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
-  ctx.lineWidth = 3.5;
-  ctx.stroke(path);
-  ctx.shadowBlur = 0;
-
-  // Start/finish line: a short bar across the track at the first outline point.
-  if (points.length > 1) {
-    const [a, b] = points;
-    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    const nx = -(b.y - a.y) / len;
-    const ny = (b.x - a.x) / len;
-    ctx.strokeStyle = "#e10600";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(a.x - nx * 9, a.y - ny * 9);
-    ctx.lineTo(a.x + nx * 9, a.y + ny * 9);
-    ctx.stroke();
-  }
-
-  ctx.font = `600 10px ${fontFamily}`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  for (const corner of track.corners) {
-    const p = toScreen(corner);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-    ctx.fillText(String(corner.number), p.x, p.y + 0.5);
-  }
+  drawTrack(ctx, track, toScreen, fontFamily);
   return layer;
 }
 
@@ -100,7 +57,7 @@ function TrackCanvas({ track }: { track: TrackGeometry }) {
     canvas.width = Math.round(size.width * dpr);
     canvas.height = Math.round(size.height * dpr);
     const fontFamily = getComputedStyle(canvas).fontFamily;
-    const toScreen = fitToCanvas(track.bounds, size.width, size.height, PADDING);
+    const toScreen = fitToCanvas(track.bounds, size.width, size.height, TRACK_MAP_PADDING);
     const staticLayer = drawStaticLayer(track, toScreen, size.width, size.height, dpr, fontFamily);
 
     let frame = 0;
@@ -185,6 +142,7 @@ function TrackCanvas({ track }: { track: TrackGeometry }) {
         onPointerDown={handlePointerDown}
         role="img"
         aria-label="Track map showing car positions"
+        data-track-canvas
         className="absolute inset-0 h-full w-full cursor-pointer"
       />
     </div>
@@ -227,6 +185,9 @@ function TrackStats() {
   );
 }
 
+const UNAVAILABLE =
+  "No telemetry captured for this session yet. Mock data covers the Monza race and Baku qualifying; live OpenF1 data comes in the next phase.";
+
 export default function TrackMap() {
   const session = useTelemetryStore((s) => s.session);
   const track = useTelemetryStore((s) => s.track);
@@ -246,19 +207,24 @@ export default function TrackMap() {
         )}
       </header>
 
-      {status === "ready" && track ? (
+      {/* The circuit outline usually arrives before the session's data, so it shows while that loads. */}
+      {track && status !== "error" ? (
         <TrackCanvas track={track} />
       ) : (
         <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-white/55">
           {status === "loading" && "Loading session…"}
-          {status === "unavailable" &&
-            "No telemetry captured for this session yet. Mock data covers the Monza race and Baku qualifying; live OpenF1 data comes in the next phase."}
+          {status === "unavailable" && UNAVAILABLE}
           {status === "error" && "Couldn't load this session."}
-          {status === "ready" && !track && "Track layout unavailable for this circuit."}
+          {status === "ready" && "Track layout unavailable for this circuit."}
         </div>
       )}
 
       {status === "ready" && <TrackStats />}
+      {track && (status === "loading" || status === "unavailable") && (
+        <p className="px-8 pb-5 pt-1 text-center text-xs font-medium text-white/55">
+          {status === "loading" ? "Loading session…" : UNAVAILABLE}
+        </p>
+      )}
     </GlassPanel>
   );
 }

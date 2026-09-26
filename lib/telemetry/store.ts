@@ -133,10 +133,20 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     });
 
     try {
+      // The outline is small and independent of the session's data, so publish it
+      // as soon as it lands; the intro and track map draw it while the rest loads.
+      const layoutRequest = getCircuitLayout(session.circuit_key, session.year)
+        .catch(() => null)
+        .then((layout) => {
+          if (token === loadToken && layout) set({ track: buildTrackGeometry(layout), pitLoss: layout.pitLoss ?? null });
+          return layout;
+        });
+
       const replay = await getReplayWindow(session);
       if (token !== loadToken) return;
       if (!replay) {
-        set({ status: "unavailable" });
+        await layoutRequest;
+        if (token === loadToken) set({ status: "unavailable" });
         return;
       }
 
@@ -146,7 +156,7 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
         getStints(sessionKey),
         getLaps(sessionKey, replay.end),
         getRaceControl(sessionKey, replay.end),
-        getCircuitLayout(session.circuit_key, session.year),
+        layoutRequest,
       ]);
       if (token !== loadToken) return;
 
@@ -166,7 +176,8 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
       set({
         drivers,
         timeline,
-        track: outline ? buildTrackGeometry(outline) : null,
+        // Keep the geometry published early so anything drawing it isn't restarted.
+        track: get().track ?? (outline ? buildTrackGeometry(outline) : null),
         pitLoss: layout?.pitLoss ?? null,
         replay,
         cursor: replay.start,

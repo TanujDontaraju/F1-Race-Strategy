@@ -15,9 +15,17 @@ export interface Bounds {
 export interface TrackGeometry {
   /** Outline in rotated world units, in driving order (index 0 is the start/finish line). */
   outline: Point[];
-  corners: { number: number; x: number; y: number }[];
+  /** Corner-number label positions; `progress` is how far round the lap (0–1) the corner sits. */
+  corners: { number: number; x: number; y: number; progress: number }[];
   bounds: Bounds;
   toWorld: (x: number, y: number) => Point;
+}
+
+/** Where a uniformly scaled track sits on screen: the centre of its bounds, and pixels per world unit. */
+export interface ScreenFit {
+  x: number;
+  y: number;
+  scale: number;
 }
 
 // Distance of corner-number labels from the racing line, as a fraction of the track's span.
@@ -57,27 +65,62 @@ export function buildTrackGeometry(layout: CircuitLayout): TrackGeometry {
   const span = Math.max(rawBounds.maxX - rawBounds.minX, rawBounds.maxY - rawBounds.minY);
   const offset = span * CORNER_LABEL_OFFSET;
 
+  const travelled = [0];
+  for (let i = 1; i < raw.length; i++) {
+    travelled.push(travelled[i - 1] + Math.hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y));
+  }
+  const last = raw[raw.length - 1];
+  const lapLength = travelled[travelled.length - 1] + Math.hypot(raw[0].x - last.x, raw[0].y - last.y) || 1;
+
   const corners = layout.corners.map((corner) => {
     const a = (corner.angle * Math.PI) / 180;
     const p = toWorld(
       corner.trackPosition.x + offset * Math.cos(a),
       corner.trackPosition.y + offset * Math.sin(a)
     );
-    return { number: corner.number, ...p };
+    let nearest = 0;
+    let nearestDistance = Infinity;
+    raw.forEach((q, i) => {
+      const d = (q.x - corner.trackPosition.x) ** 2 + (q.y - corner.trackPosition.y) ** 2;
+      if (d < nearestDistance) {
+        nearestDistance = d;
+        nearest = i;
+      }
+    });
+    return { number: corner.number, ...p, progress: travelled[nearest] / lapLength };
   });
 
   return { outline, corners, bounds: boundsOf(outline), toWorld };
 }
 
-/** Uniformly scales world bounds into a canvas, flipping y so north stays up. */
-export function fitToCanvas(bounds: Bounds, width: number, height: number, padding: number) {
+/** Uniformly scales world bounds into a box (in screen pixels), leaving `padding` round the edge. */
+export function fitToBox(
+  bounds: Bounds,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  padding: number
+): ScreenFit {
   const w = Math.max(bounds.maxX - bounds.minX, 1);
   const h = Math.max(bounds.maxY - bounds.minY, 1);
-  const scale = Math.min((width - padding * 2) / w, (height - padding * 2) / h);
+  return {
+    x: left + width / 2,
+    y: top + height / 2,
+    scale: Math.min((width - padding * 2) / w, (height - padding * 2) / h),
+  };
+}
+
+/** World → screen for a fit, flipping y so north stays up. */
+export function projector(bounds: Bounds, fit: ScreenFit) {
   const midX = (bounds.minX + bounds.maxX) / 2;
   const midY = (bounds.minY + bounds.maxY) / 2;
   return (p: Point): Point => ({
-    x: width / 2 + (p.x - midX) * scale,
-    y: height / 2 - (p.y - midY) * scale,
+    x: fit.x + (p.x - midX) * fit.scale,
+    y: fit.y - (p.y - midY) * fit.scale,
   });
+}
+
+export function fitToCanvas(bounds: Bounds, width: number, height: number, padding: number) {
+  return projector(bounds, fitToBox(bounds, 0, 0, width, height, padding));
 }

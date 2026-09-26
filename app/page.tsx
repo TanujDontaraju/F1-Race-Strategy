@@ -4,19 +4,25 @@ import { useState } from "react";
 import IntroScreen from "@/components/IntroScreen";
 import TelemetryDashboard from "@/components/telemetry/TelemetryDashboard";
 
-export default function Home() {
-  const [introComplete, setIntroComplete] = useState(false);
+type Phase = "intro" | "flight" | "fade" | "done";
 
-  if (!introComplete) {
-    return <IntroScreen onEnter={() => setIntroComplete(true)} />;
-  }
+export default function Home() {
+  const [phase, setPhase] = useState<Phase>("intro");
+  const covered = phase === "intro";
 
   return (
-    <div
-      className="flex flex-1 flex-col"
-      style={{ animation: "cinematic-fade-in 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards" }}
-    >
-      <TelemetryDashboard />
-    </div>
+    <>
+      {/* The dashboard loads behind the intro, so it's ready the moment you enter. */}
+      <div
+        inert={covered}
+        data-track-hidden={phase === "flight" ? "" : undefined}
+        className={covered ? "flex h-screen flex-col overflow-hidden" : "flex flex-1 flex-col"}
+      >
+        <TelemetryDashboard active={!covered} />
+      </div>
+      {phase !== "done" && (
+        <IntroScreen onLeave={(flight) => setPhase(flight ? "flight" : "fade")} onDone={() => setPhase("done")} />
+      )}
+    </>
   );
 }
