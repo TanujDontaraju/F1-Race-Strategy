@@ -1,8 +1,10 @@
 "use client";
 
 import Dropdown from "@/components/telemetry/Dropdown";
+import SegmentedControl from "@/components/telemetry/SegmentedControl";
 import { useTelemetryStore } from "@/lib/telemetry/store";
 import { Session } from "@/lib/telemetry/types";
+import { sessionShortName } from "@/lib/telemetry/views";
 
 function groupByMeeting(sessions: Session[]): Session[][] {
   const groups = new Map<number, Session[]>();
@@ -54,13 +56,19 @@ export default function SessionPicker() {
         onChange={handleMeetingChange}
         disabled={meetings.length === 0}
       />
-      <Dropdown
-        label="Session"
-        value={String(session?.session_key ?? "")}
-        options={meetingSessions.map((s) => ({ value: String(s.session_key), label: s.session_name }))}
-        onChange={(v) => void selectSession(Number(v))}
-        disabled={meetingSessions.length === 0}
-      />
+      {session && meetingSessions.length > 0 && (
+        <SegmentedControl
+          kind="radio"
+          label="Session"
+          options={meetingSessions.map((s) => s.session_key)}
+          value={session.session_key}
+          onChange={(key) => void selectSession(key)}
+          getLabel={(key) => {
+            const match = meetingSessions.find((s) => s.session_key === key);
+            return match ? sessionShortName(match) : "";
+          }}
+        />
+      )}
     </div>
   );
 }

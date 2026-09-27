@@ -38,23 +38,36 @@ export default function SegmentedControl<T extends string | number>({
     onChange(option);
   };
 
+  // A new choice glides the thumb across. A new set of options (the tabs change
+  // with the session type) resizes every segment, so the thumb snaps to fit instead.
+  const optionsKey = options.join("\u0000");
+  const lastOptionsKey = useRef(optionsKey);
   useLayoutEffect(() => {
-    moveTo(listRef.current?.querySelector<HTMLElement>(SELECTED_SEGMENT) ?? null);
-  }, [value, moveTo]);
+    const instant = lastOptionsKey.current !== optionsKey;
+    lastOptionsKey.current = optionsKey;
+    moveTo(listRef.current?.querySelector<HTMLElement>(SELECTED_SEGMENT) ?? null, { instant });
+  }, [value, optionsKey, moveTo]);
 
-  // Segments can stretch with their container; keep the thumb on its segment without animating.
+  // Segments also resize without the options changing: the container stretches, or
+  // the web font arrives after the first layout. Keep the thumb on its segment.
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    let width = list.offsetWidth;
-    const observer = new ResizeObserver(() => {
-      if (list.offsetWidth === width) return;
-      width = list.offsetWidth;
-      moveTo(list.querySelector<HTMLElement>(SELECTED_SEGMENT), { instant: true });
+    const sizes = new Map<Element, string>();
+    const observer = new ResizeObserver((entries) => {
+      let resized = false;
+      for (const entry of entries) {
+        const box = entry.target as HTMLElement;
+        const size = `${box.offsetWidth}x${box.offsetHeight}`;
+        if (sizes.has(box) && sizes.get(box) !== size) resized = true;
+        sizes.set(box, size);
+      }
+      if (resized) moveTo(list.querySelector<HTMLElement>(SELECTED_SEGMENT), { instant: true });
     });
     observer.observe(list);
+    list.querySelectorAll(SEGMENT).forEach((segment) => observer.observe(segment));
     return () => observer.disconnect();
-  }, [moveTo]);
+  }, [moveTo, optionsKey]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const last = options.length - 1;

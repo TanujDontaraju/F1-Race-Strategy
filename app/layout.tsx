@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,6 +26,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {children}
+        {/* Race alerts render their own glass cards; this only positions and stacks them. */}
+        <Toaster theme="dark" position="top-right" offset={{ top: 96, right: 24 }} mobileOffset={{ top: 12 }} gap={10} />
       </body>
     </html>
   );

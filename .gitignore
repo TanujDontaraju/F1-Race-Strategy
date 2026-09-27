@@ -1,9 +1,10 @@
-# Cache directories
+# Cache directories (includes server/cache/, the processed session archive)
 cache/
 .cache/
 
 # Python virtual environment
 venv/
+.venv/
 
 # Python bytecode and artifacts
 __pycache__/

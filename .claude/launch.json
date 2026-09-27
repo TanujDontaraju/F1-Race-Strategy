@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "telemetry-server",
+      "runtimeExecutable": "server/.venv/Scripts/python",
+      "runtimeArgs": ["-m", "uvicorn", "server.main:app", "--port", "8000"],
+      "port": 8000
     }
   ]
 }

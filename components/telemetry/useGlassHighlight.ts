@@ -12,7 +12,19 @@ const STIFFNESS = ((2 * Math.PI) / RESPONSE) ** 2;
 const DAMPING = (4 * Math.PI) / RESPONSE;
 const REST = 0.1;
 
+// A snap keeps re-pinning to its item for this many frames (~0.3s), instead of
+// just one: a freshly mounted panel can keep reflowing for a few frames after
+// the first paint (an image decoding, a web font swapping in), and one
+// confirm frame isn't always enough to catch where it lands.
+const SNAP_CONFIRM_FRAMES = 18;
+
 const zero = (): Box => ({ x: 0, y: 0, w: 0, h: 0 });
+const measure = (item: HTMLElement): Box => ({
+  x: item.offsetLeft,
+  y: item.offsetTop,
+  w: item.offsetWidth,
+  h: item.offsetHeight,
+});
 
 /**
  * One glass highlight shared by every item in a list. Render the returned ref on
@@ -25,6 +37,10 @@ export function useGlassHighlight<T extends HTMLElement>() {
     pos: zero(),
     vel: zero(),
     target: zero(),
+    /** The item being highlighted, re-measured every frame in case the layout shifts under it. */
+    item: null as HTMLElement | null,
+    /** Frames left re-pinning to a just-snapped item, to catch layout that's still settling. */
+    snapFrames: 0,
     visible: false,
     frame: 0,
     last: 0,
@@ -47,6 +63,18 @@ export function useGlassHighlight<T extends HTMLElement>() {
   const step = useCallback(
     function tick(now: number) {
       const s = state.current;
+      // Layout can move the item after it was measured (a panel loading in, a scrollbar
+      // appearing), and that in-between layout may never be painted for a
+      // ResizeObserver to see. So aim at wherever the item is now.
+      if (s.item?.isConnected) s.target = measure(s.item);
+      if (s.snapFrames > 0) {
+        s.snapFrames--;
+        s.pos = { ...s.target };
+        s.vel = zero();
+        paint();
+        s.frame = s.snapFrames > 0 ? requestAnimationFrame(tick) : 0;
+        return;
+      }
       const dt = Math.min((now - s.last) / 1000, 1 / 30);
       s.last = now;
       let moving = false;
@@ -73,11 +101,13 @@ export function useGlassHighlight<T extends HTMLElement>() {
       const s = state.current;
       if (!el) return;
       if (!item) {
+        s.item = null;
         s.visible = false;
         el.dataset.visible = "false";
         return;
       }
-      s.target = { x: item.offsetLeft, y: item.offsetTop, w: item.offsetWidth, h: item.offsetHeight };
+      s.item = item;
+      s.target = measure(item);
       // Appearing (or reduced motion): materialise in place rather than sliding in from the last spot.
       const snap =
         options?.instant || !s.visible || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -85,12 +115,17 @@ export function useGlassHighlight<T extends HTMLElement>() {
       el.dataset.visible = "true";
       if (snap) {
         cancelAnimationFrame(s.frame);
-        s.frame = 0;
         s.pos = { ...s.target };
         s.vel = zero();
         paint();
-      } else if (!s.frame) {
-        s.last = performance.now();
+        // Keep re-pinning for a few frames, in case the layout is still settling.
+        s.snapFrames = SNAP_CONFIRM_FRAMES;
+        s.frame = requestAnimationFrame(step);
+      } else {
+        // Carry on from the current motion if the spring is running; otherwise start it now.
+        if (!s.frame || s.snapFrames > 0) s.last = performance.now();
+        s.snapFrames = 0;
+        cancelAnimationFrame(s.frame);
         s.frame = requestAnimationFrame(step);
       }
     },

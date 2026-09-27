@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CloudRain, Crosshair, Maximize2, Minimize2 } from "lucide-react";
+import { RefObject, useEffect, useMemo, useRef, useState } from "react";
 import GlassPanel from "@/components/telemetry/GlassPanel";
+import RaceControlFeed from "@/components/telemetry/RaceControlFeed";
 import { telemetryBuffer } from "@/lib/telemetry/buffer";
 import { sessionStats } from "@/lib/telemetry/derive";
 import { drawTrack, TRACK_MAP_PADDING } from "@/lib/telemetry/drawTrack";
-import { formatLapTime, teamColour } from "@/lib/telemetry/format";
-import { fitToCanvas, Point, TrackGeometry } from "@/lib/telemetry/geometry";
-import { useTelemetryStore } from "@/lib/telemetry/store";
+import { formatLapTime, parseDate, teamColour } from "@/lib/telemetry/format";
+import { fitToBox, Point, projector, ScreenFit, TrackGeometry } from "@/lib/telemetry/geometry";
+import { OFFLINE_MESSAGE, useTelemetryStore } from "@/lib/telemetry/store";
 
 const CAR_RADIUS = 5;
 const SELECTED_RADIUS = 7;
 const HIT_RADIUS = 16;
+const FOLLOW_ZOOM = 3;
+// Seconds for the camera to close most of the distance to its target: quick enough to keep
+// a car at full speed near the centre, slow enough that zooming in and out reads as motion.
+const CAMERA_EASE_S = 0.18;
 
 function drawStaticLayer(
   track: TrackGeometry,
@@ -30,7 +36,7 @@ function drawStaticLayer(
   return layer;
 }
 
-function TrackCanvas({ track }: { track: TrackGeometry }) {
+function TrackCanvas({ track, followRef }: { track: TrackGeometry; followRef: RefObject<boolean> }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const screenPositions = useRef(new Map<number, Point>());
@@ -57,15 +63,42 @@ function TrackCanvas({ track }: { track: TrackGeometry }) {
     canvas.width = Math.round(size.width * dpr);
     canvas.height = Math.round(size.height * dpr);
     const fontFamily = getComputedStyle(canvas).fontFamily;
-    const toScreen = fitToCanvas(track.bounds, size.width, size.height, TRACK_MAP_PADDING);
-    const staticLayer = drawStaticLayer(track, toScreen, size.width, size.height, dpr, fontFamily);
+    const base = fitToBox(track.bounds, 0, 0, size.width, size.height, TRACK_MAP_PADDING);
+    const staticLayer = drawStaticLayer(track, projector(track.bounds, base), size.width, size.height, dpr, fontFamily);
+    const midX = (track.bounds.minX + track.bounds.maxX) / 2;
+    const midY = (track.bounds.minY + track.bounds.maxY) / 2;
 
+    let camera: ScreenFit = { ...base };
+    let last = performance.now();
     let frame = 0;
-    const draw = () => {
+    const draw = (now: number) => {
+      const dt = Math.min(now - last, 100) / 1000;
+      last = now;
       const { cursor, drivers, selectedDriver } = useTelemetryStore.getState();
+
+      let target = base;
+      const followed = followRef.current && selectedDriver != null ? telemetryBuffer.samplePosition(selectedDriver, cursor) : null;
+      if (followed) {
+        const w = track.toWorld(followed.x, followed.y);
+        const scale = base.scale * FOLLOW_ZOOM;
+        target = { scale, x: size.width / 2 - (w.x - midX) * scale, y: size.height / 2 + (w.y - midY) * scale };
+      }
+      const k = 1 - Math.exp(-dt / CAMERA_EASE_S);
+      camera = {
+        x: camera.x + (target.x - camera.x) * k,
+        y: camera.y + (target.y - camera.y) * k,
+        scale: camera.scale + (target.scale - camera.scale) * k,
+      };
+      const atRest = target === base && Math.abs(camera.scale - base.scale) < base.scale * 1e-3 &&
+        Math.hypot(camera.x - base.x, camera.y - base.y) < 0.5;
+      if (atRest) camera = { ...base };
+
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, size.width, size.height);
-      ctx.drawImage(staticLayer, 0, 0, size.width, size.height);
+      const toScreen = projector(track.bounds, camera);
+      // The usual whole-circuit view reuses the pre-rendered track; a moving camera redraws it.
+      if (atRest) ctx.drawImage(staticLayer, 0, 0, size.width, size.height);
+      else drawTrack(ctx, track, toScreen, fontFamily);
 
       const positions = screenPositions.current;
       positions.clear();
@@ -120,7 +153,7 @@ function TrackCanvas({ track }: { track: TrackGeometry }) {
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [track, size]);
+  }, [track, size, followRef]);
 
   // Selection responds on pointer-down, not release.
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -173,7 +206,7 @@ function TrackStats() {
   ];
 
   return (
-    <dl className="grid grid-cols-3 gap-2 px-6 pb-5 pt-1">
+    <dl className="grid grid-cols-3 gap-2 px-6 pb-4 pt-1">
       {items.map((item) => (
         <div key={item.label} className="text-center">
           <dt className="text-[11px] font-medium uppercase tracking-[0.08em] text-white/55">{item.label}</dt>
@@ -185,41 +218,137 @@ function TrackStats() {
   );
 }
 
-const UNAVAILABLE =
-  "No telemetry captured for this session yet. Mock data covers the Monza race and Baku qualifying; live OpenF1 data comes in the next phase.";
+/** Conditions at the playback moment. */
+function WeatherNow() {
+  const weather = useTelemetryStore((s) => s.weather);
+  const time = useTelemetryStore((s) => s.displayCursor);
+  const now = useMemo(() => {
+    let latest = null;
+    for (const row of weather) {
+      if (parseDate(row.date) > time) break;
+      latest = row;
+    }
+    return latest;
+  }, [weather, time]);
+  if (!now) return null;
+
+  const reading = (label: string, value: number | null, unit: string) =>
+    value == null ? null : (
+      <span className="whitespace-nowrap">
+        <span className="text-white/45">{label} </span>
+        {Math.round(value)}
+        {unit}
+      </span>
+    );
+
+  return (
+    <p className="hidden items-center gap-3 text-xs font-medium tabular-nums text-white/80 sm:flex" aria-label="Current weather">
+      {reading("Air", now.air_temperature, "°")}
+      {reading("Track", now.track_temperature, "°")}
+      {reading("Wind", now.wind_speed == null ? null : now.wind_speed * 3.6, " km/h")}
+      {(now.rainfall ?? 0) > 0 && (
+        <span className="flex items-center gap-1 text-[#64d2ff]">
+          <CloudRain size={14} aria-hidden /> Rain
+        </span>
+      )}
+    </p>
+  );
+}
+
+function IconToggle({
+  label,
+  pressed,
+  onClick,
+  children,
+}: {
+  label: string;
+  pressed: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={pressed}
+      title={label}
+      onClick={onClick}
+      className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/10 hover:text-white active:scale-90 aria-pressed:bg-white/15 aria-pressed:text-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+const UNAVAILABLE = "No timing data has been published for this session yet.";
 
 export default function TrackMap() {
   const session = useTelemetryStore((s) => s.session);
   const track = useTelemetryStore((s) => s.track);
   const status = useTelemetryStore((s) => s.status);
+  const panelRef = useRef<HTMLElement>(null);
+  const [follow, setFollow] = useState(false);
+  const followRef = useRef(follow);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    followRef.current = follow;
+  }, [follow]);
+
+  useEffect(() => {
+    const onChange = () => setFullscreen(document.fullscreenElement === panelRef.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void panelRef.current?.requestFullscreen();
+  };
+
+  const ready = status === "ready";
 
   return (
-    <GlassPanel className="order-first flex min-h-[380px] flex-col lg:order-none lg:min-h-0" aria-label="Track map">
+    <GlassPanel
+      ref={panelRef}
+      className="order-first flex min-h-[380px] flex-col lg:order-none lg:min-h-0"
+      aria-label="Track map"
+    >
       <header className="flex items-center justify-between gap-3 px-6 pt-5">
         <div className="min-w-0">
           <p className="text-xs font-medium text-white/60">{session?.circuit_short_name ?? ""}</p>
           <p className="truncate text-lg font-bold tracking-tight">{session?.country_name ?? "—"}</p>
         </div>
-        {session && (
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-[0.04em] text-white/80">
-            {session.session_name}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {ready && <WeatherNow />}
+          {ready && track && (
+            <div className="flex items-center gap-0.5 rounded-full bg-black/25 p-0.5">
+              <IconToggle label="Follow the selected car" pressed={follow} onClick={() => setFollow((f) => !f)}>
+                <Crosshair size={16} />
+              </IconToggle>
+              <IconToggle label={fullscreen ? "Exit full screen" : "Full screen"} pressed={fullscreen} onClick={toggleFullscreen}>
+                {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+              </IconToggle>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* The circuit outline usually arrives before the session's data, so it shows while that loads. */}
-      {track && status !== "error" ? (
-        <TrackCanvas track={track} />
+      {track && status !== "error" && status !== "offline" ? (
+        <TrackCanvas track={track} followRef={followRef} />
       ) : (
         <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-white/55">
           {status === "loading" && "Loading session…"}
           {status === "unavailable" && UNAVAILABLE}
           {status === "error" && "Couldn't load this session."}
+          {status === "offline" && OFFLINE_MESSAGE}
           {status === "ready" && "Track layout unavailable for this circuit."}
         </div>
       )}
 
-      {status === "ready" && <TrackStats />}
+      {ready && <TrackStats />}
+      {ready && <RaceControlFeed />}
       {track && (status === "loading" || status === "unavailable") && (
         <p className="px-8 pb-5 pt-1 text-center text-xs font-medium text-white/55">
           {status === "loading" ? "Loading session…" : UNAVAILABLE}

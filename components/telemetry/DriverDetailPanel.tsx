@@ -4,9 +4,10 @@ import Image from "next/image";
 import { ReactNode, useState } from "react";
 import GlassPanel from "@/components/telemetry/GlassPanel";
 import SegmentedControl from "@/components/telemetry/SegmentedControl";
+import TelemetryHistory from "@/components/telemetry/TelemetryHistory";
 import TyreBadge, { tyreLabel } from "@/components/telemetry/TyreBadge";
 import { telemetryBuffer } from "@/lib/telemetry/buffer";
-import { bestLap, completedLaps, currentLap, positionAt, tyreAt } from "@/lib/telemetry/derive";
+import { bestLap, completedLaps, currentLap, intervalAt, positionAt, tyreAt } from "@/lib/telemetry/derive";
 import { formatGap, formatLapTime, teamColour } from "@/lib/telemetry/format";
 import { driverPortraits } from "@/lib/telemetry/portrait";
 import { useTelemetryStore } from "@/lib/telemetry/store";
@@ -77,6 +78,8 @@ export default function DriverDetailPanel() {
   const timeline = useTelemetryStore((s) => s.timeline);
   const session = useTelemetryStore((s) => s.session);
   const time = useTelemetryStore((s) => s.displayCursor);
+  // Subscribed so the car readout refreshes when telemetry arrives while paused.
+  useTelemetryStore((s) => s.bufferRevision);
   const [tab, setTab] = useState<Tab>("Telemetry");
 
   const driver = drivers.find((d) => d.driver_number === selectedDriver);
@@ -95,7 +98,7 @@ export default function DriverDetailPanel() {
   const lap = currentLap(timeline, n, time);
   const tyre = tyreAt(timeline, n, lap);
   const car = telemetryBuffer.sampleCar(n, time);
-  const interval = isRace ? telemetryBuffer.sampleInterval(n, time) : null;
+  const interval = isRace ? intervalAt(timeline, n, time) : null;
   const lastLap = completedLaps(timeline, n, time).at(-1) ?? null;
   const best = bestLap(timeline, n, time);
   const stints = (timeline.stints.get(n) ?? []).filter((s) => lap == null || s.lap_start <= lap);
@@ -146,6 +149,7 @@ export default function DriverDetailPanel() {
               <Row label="RPM">{car.rpm.toLocaleString()}</Row>
               <Bar label="Throttle" value={car.throttle} colour="#30d158" />
               <Bar label="Brake" value={car.brake} colour="#ff453a" />
+              <TelemetryHistory driver={n} time={time} />
             </>
           ) : (
             <p className="py-4 text-center text-sm text-white/50">No car telemetry at this moment</p>

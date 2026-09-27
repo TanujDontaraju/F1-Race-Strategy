@@ -120,6 +120,8 @@ export default function IntroScreen({ onLeave, onDone }: IntroScreenProps) {
     let last = performance.now();
     let lapDoneAt: number | null = null;
     let skipAt: number | null = null;
+    // Real time, not `clock`: the handoff must finish on schedule even if frames are sparse,
+    // since the backdrop's CSS fade runs on real time regardless.
     let flightStart: number | null = null;
     let flightFrom: ScreenFit | null = null;
     let frame = 0;
@@ -157,11 +159,11 @@ export default function IntroScreen({ onLeave, onDone }: IntroScreenProps) {
       let landed = false;
       if (c.flightTo) {
         if (flightStart === null) {
-          flightStart = clock;
+          flightStart = now;
           flightFrom = fit;
         }
         const omega = (2 * Math.PI) / FLIGHT_RESPONSE;
-        const t = clock - flightStart;
+        const t = (now - flightStart) / 1000;
         const remaining = (1 + omega * t) * Math.exp(-omega * t);
         const to = c.flightTo;
         const from = flightFrom ?? fit;
@@ -184,7 +186,7 @@ export default function IntroScreen({ onLeave, onDone }: IntroScreenProps) {
         ? 0
         : flightStart === null
           ? 1
-          : Math.max(0, 1 - (clock - flightStart) / CAR_FADE_SECONDS);
+          : Math.max(0, 1 - (now - flightStart) / 1000 / CAR_FADE_SECONDS);
       if (carAlpha > 0) drawCar(ctx, lap, distance, opening ? 0 : -Infinity, toScreen, fit.scale, carAlpha);
 
       if (landed) {
@@ -274,7 +276,7 @@ export default function IntroScreen({ onLeave, onDone }: IntroScreenProps) {
         style={leaving ? { opacity: 0, transform: "translateY(6px)" } : undefined}
       >
         <Rise shown={!!session} delay={250}>
-          <Image src="/f1-logo.png" alt="Formula 1" width={666} height={375} className="h-auto w-14" />
+          <Image src="/f1-logo.png" alt="Formula 1" width={666} height={375} loading="eager" className="h-auto w-14" />
         </Rise>
         <Rise shown={!!session} delay={330}>
           <h2 className="mt-3 text-4xl font-bold tracking-tight sm:text-5xl">{session?.country_name}</h2>

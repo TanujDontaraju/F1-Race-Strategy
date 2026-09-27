@@ -10,6 +10,13 @@ export function tyreLabel(compound: string | null | undefined): string {
   return (compound && TYRES[compound]?.label) || "Unknown";
 }
 
+export function tyreColour(compound: string | null | undefined): string {
+  return (compound && TYRES[compound]?.colour) || "#8e8e93";
+}
+
+/** Compounds in the order Pirelli lists them, for legends. */
+export const COMPOUND_ORDER = Object.keys(TYRES);
+
 export default function TyreBadge({
   compound,
   size = 20,

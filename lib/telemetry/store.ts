@@ -3,30 +3,62 @@ import {
   getAvailableYears,
   getCircuitLayout,
   getDrivers,
+  getGrid,
+  getIntervals,
+  getKnockouts,
   getLaps,
   getLocations,
+  getPitStops,
   getPositions,
   getRaceControl,
   getReplayWindow,
+  getRetirements,
   getSessions,
+  getSessionStatus,
   getStints,
+  getTrackStatus,
+  getWeather,
+  ServerUnreachableError,
 } from "@/lib/telemetry/api";
 import { telemetryBuffer } from "@/lib/telemetry/buffer";
 import { buildTimeline, positionAt, SessionTimeline } from "@/lib/telemetry/derive";
 import { parseDate } from "@/lib/telemetry/format";
 import { buildTrackGeometry, TrackGeometry } from "@/lib/telemetry/geometry";
-import { CircuitLayout, Driver, ReplayWindow, Session } from "@/lib/telemetry/types";
+import {
+  CircuitLayout,
+  Driver,
+  GridRow,
+  KnockoutRow,
+  PitRow,
+  RaceControlRow,
+  ReplayWindow,
+  RetirementRow,
+  Session,
+  SessionStatusRow,
+  TrackStatusRow,
+  WeatherRow,
+} from "@/lib/telemetry/types";
+import { sessionKind, ViewId, viewsFor } from "@/lib/telemetry/views";
 
 export type PlaybackSpeed = 1 | 5 | 10;
 export const PLAYBACK_SPEEDS: PlaybackSpeed[] = [1, 5, 10];
 
-export type LoadStatus = "loading" | "ready" | "unavailable" | "error";
+/** "offline": the telemetry server isn't running; the dashboard reconnects once it is. */
+export type LoadStatus = "loading" | "ready" | "unavailable" | "error" | "offline";
+
+export const OFFLINE_MESSAGE =
+  "Can't reach the telemetry server on localhost:8000. Start it and this reconnects by itself.";
+
+const failed = (error: unknown): LoadStatus => (error instanceof ServerUnreachableError ? "offline" : "error");
 
 // React panels re-render off `displayCursor`, refreshed at this interval; the
 // track map reads `cursor` directly every animation frame instead.
 const DISPLAY_INTERVAL_MS = 200;
 // Caps the catch-up jump when the tab regains focus after requestAnimationFrame paused.
 const MAX_FRAME_MS = 100;
+/** Drivers the analysis views compare at once: each line gets a direct label, which stays legible up to four. */
+export const MAX_COMPARE = 4;
+const DEFAULT_COMPARE = 3;
 
 interface TelemetryState {
   years: number[];
@@ -45,14 +77,31 @@ interface TelemetryState {
   isBuffering: boolean;
   speed: PlaybackSpeed;
   selectedDriver: number | null;
+  /** Bumped whenever buffered telemetry arrives; panels that sample the buffer re-render on it. */
+  bufferRevision: number;
+  raceControl: RaceControlRow[];
+  weather: WeatherRow[];
+  trackStatus: TrackStatusRow[];
+  sessionStatus: SessionStatusRow[];
+  pits: PitRow[];
+  grid: GridRow[];
+  retirements: RetirementRow[];
+  knockouts: KnockoutRow[];
+  view: ViewId;
+  /** Drivers the analysis views compare, in the order they were picked. */
+  compare: number[];
 
   loadYear: (year: number) => Promise<void>;
   selectSession: (sessionKey: number) => Promise<void>;
+  /** Loads whatever failed to load last time: the season's sessions, or the chosen session. */
+  retry: () => Promise<void>;
   togglePlay: () => void;
   setSpeed: (speed: PlaybackSpeed) => void;
   seek: (time: number) => void;
   selectDriver: (driver: number) => void;
   advance: (frameMs: number, now: number) => void;
+  setView: (view: ViewId) => void;
+  setCompare: (drivers: number[]) => void;
 }
 
 let loadToken = 0;
@@ -86,6 +135,28 @@ function leaderAt(timeline: SessionTimeline, drivers: Driver[], time: number): n
   return leader?.driver_number ?? drivers[0]?.driver_number ?? null;
 }
 
+/** Keep the comparison across sessions of a weekend; otherwise start with the top three at the end. */
+function compareFor(previous: number[], timeline: SessionTimeline, drivers: Driver[], end: number): number[] {
+  const present = new Set(drivers.map((d) => d.driver_number));
+  if (previous.length > 0 && previous.every((n) => present.has(n))) return previous;
+  return drivers
+    .map((d) => ({ n: d.driver_number, p: positionAt(timeline, d.driver_number, end) ?? 99 }))
+    .sort((a, b) => a.p - b.p)
+    .slice(0, DEFAULT_COMPARE)
+    .map((d) => d.n);
+}
+
+const NO_EXTRAS = {
+  raceControl: [],
+  weather: [],
+  trackStatus: [],
+  sessionStatus: [],
+  pits: [],
+  grid: [],
+  retirements: [],
+  knockouts: [],
+};
+
 export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   years: getAvailableYears(),
   year: getAvailableYears()[0],
@@ -103,10 +174,20 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   isBuffering: false,
   speed: 1,
   selectedDriver: null,
+  bufferRevision: 0,
+  ...NO_EXTRAS,
+  view: "pitwall",
+  compare: [],
 
   loadYear: async (year) => {
     set({ year, sessions: [], session: null, status: "loading" });
-    const sessions = await getSessions(year);
+    let sessions: Session[];
+    try {
+      sessions = await getSessions(year);
+    } catch (error) {
+      if (get().year === year) set({ status: failed(error) });
+      return;
+    }
     if (get().year !== year) return;
     set({ sessions });
     const latest = sessions[sessions.length - 1];
@@ -120,6 +201,8 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     if (!session) return;
 
     telemetryBuffer.reset(null);
+    // Stay on the current view when the new session has it (a race's Strategy tab doesn't exist in qualifying).
+    const view = viewsFor(session).some((v) => v.id === get().view) ? get().view : "pitwall";
     set({
       session,
       status: "loading",
@@ -130,6 +213,8 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
       timeline: null,
       track: null,
       pitLoss: null,
+      view,
+      ...NO_EXTRAS,
     });
 
     try {
@@ -150,17 +235,30 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
         return;
       }
 
-      const [drivers, positions, stints, laps, raceControl, layout] = await Promise.all([
+      const kind = sessionKind(session);
+      const isRace = kind === "race";
+      const [drivers, positions, intervals, stints, laps, raceControl, layout, extras] = await Promise.all([
         getDrivers(sessionKey),
         getPositions(sessionKey, replay.end),
+        isRace ? getIntervals(sessionKey, 0, replay.end) : [],
         getStints(sessionKey),
         getLaps(sessionKey, replay.end),
         getRaceControl(sessionKey, replay.end),
         layoutRequest,
+        Promise.all([
+          getWeather(sessionKey),
+          getTrackStatus(sessionKey),
+          getSessionStatus(sessionKey),
+          getPitStops(sessionKey),
+          isRace ? getGrid(sessionKey) : [],
+          isRace ? getRetirements(sessionKey) : [],
+          kind === "qualifying" ? getKnockouts(sessionKey) : [],
+        ]),
       ]);
       if (token !== loadToken) return;
+      const [weather, trackStatus, sessionStatus, pits, grid, retirements, knockouts] = extras;
 
-      const timeline = buildTimeline(positions, laps, stints, raceControl);
+      const timeline = buildTimeline(positions, intervals, laps, stints, raceControl);
       const outline = layout ?? (await traceOutline(sessionKey, timeline, replay));
       if (token !== loadToken) return;
 
@@ -183,12 +281,27 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
         cursor: replay.start,
         displayCursor: replay.start,
         selectedDriver,
+        raceControl,
+        weather,
+        trackStatus,
+        sessionStatus,
+        pits,
+        grid,
+        retirements,
+        knockouts,
+        compare: compareFor(get().compare, timeline, drivers, replay.end),
         status: "ready",
         isPlaying: true,
       });
-    } catch {
-      if (token === loadToken) set({ status: "error" });
+    } catch (error) {
+      if (token === loadToken) set({ status: failed(error) });
     }
+  },
+
+  retry: async () => {
+    const { session, sessions, year, loadYear, selectSession } = get();
+    if (session && sessions.length > 0) await selectSession(session.session_key);
+    else await loadYear(year);
   },
 
   togglePlay: () => {
@@ -212,6 +325,11 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   },
 
   selectDriver: (driver) => set({ selectedDriver: driver }),
+
+  // The replay only plays on the Pit Wall; the analysis views cover the whole session at once.
+  setView: (view) => set((s) => ({ view, isPlaying: view === "pitwall" && s.isPlaying })),
+
+  setCompare: (drivers) => set({ compare: drivers.slice(0, MAX_COMPARE) }),
 
   advance: (frameMs, now) => {
     const s = get();
@@ -238,3 +356,5 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     if (Object.keys(patch).length > 0) set(patch);
   },
 }));
+
+telemetryBuffer.onChunk = () => useTelemetryStore.setState((s) => ({ bufferRevision: s.bufferRevision + 1 }));

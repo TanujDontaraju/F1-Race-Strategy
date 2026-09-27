@@ -224,6 +224,17 @@ body {
   box-shadow: 0 0 0 4px rgba(225, 6, 0, 0.35);
 }
 
+/* Race alerts float over the dashboard, so they're near-opaque glass with a clear shadow
+   to lift them off the panels beneath. Sonner handles their entrance, stacking and swipe. */
+.race-alert {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)), rgba(24, 24, 30, 0.9);
+  backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 18px 40px -14px rgba(0, 0, 0, 0.85);
+}
+
 /* Intro text materialises: blur, rise and fade settle together. */
 .intro-rise {
   opacity: 0;

@@ -1,6 +1,6 @@
-import { lastIndexAtOrBefore, telemetryBuffer } from "@/lib/telemetry/buffer";
+import { lastIndexAtOrBefore } from "@/lib/telemetry/buffer";
 import { formatGap, formatLapTime, parseDate } from "@/lib/telemetry/format";
-import { Driver, LapRow, PositionRow, RaceControlRow, StintRow } from "@/lib/telemetry/types";
+import { Driver, GapValue, IntervalRow, LapRow, PositionRow, RaceControlRow, StintRow } from "@/lib/telemetry/types";
 
 export interface TimedLap {
   lap: number;
@@ -18,9 +18,19 @@ export interface SessionPhase {
   start: number;
 }
 
-/** Low-frequency session data indexed per driver for fast lookups at any time. */
+export interface IntervalSample {
+  gap: GapValue;
+  interval: GapValue;
+}
+
+/**
+ * Low-frequency session data indexed per driver for fast lookups at any time.
+ * Race gaps live here rather than in the telemetry buffer: they only change now
+ * and then (and stop at the flag), so the latest value can be minutes old.
+ */
 export interface SessionTimeline {
   positions: Map<number, { t: number[]; position: number[] }>;
+  intervals: Map<number, { t: number[]; gap: GapValue[]; interval: GapValue[] }>;
   laps: Map<number, TimedLap[]>;
   stints: Map<number, StintRow[]>;
   phases: SessionPhase[];
@@ -28,12 +38,14 @@ export interface SessionTimeline {
 
 export function buildTimeline(
   positions: PositionRow[],
+  intervals: IntervalRow[],
   laps: LapRow[],
   stints: StintRow[],
   raceControl: RaceControlRow[]
 ): SessionTimeline {
   const timeline: SessionTimeline = {
     positions: new Map(),
+    intervals: new Map(),
     laps: new Map(),
     stints: new Map(),
     phases: raceControl
@@ -47,6 +59,14 @@ export function buildTimeline(
     if (!series) timeline.positions.set(row.driver_number, (series = { t: [], position: [] }));
     series.t.push(parseDate(row.date));
     series.position.push(row.position);
+  }
+
+  for (const row of [...intervals].sort((a, b) => parseDate(a.date) - parseDate(b.date))) {
+    let series = timeline.intervals.get(row.driver_number);
+    if (!series) timeline.intervals.set(row.driver_number, (series = { t: [], gap: [], interval: [] }));
+    series.t.push(parseDate(row.date));
+    series.gap.push(row.gap_to_leader);
+    series.interval.push(row.interval);
   }
 
   for (const row of laps) {
@@ -81,6 +101,13 @@ export function positionAt(timeline: SessionTimeline, driver: number, time: numb
   if (!series) return null;
   const i = lastIndexAtOrBefore(series.t, time);
   return i < 0 ? null : series.position[i];
+}
+
+export function intervalAt(timeline: SessionTimeline, driver: number, time: number): IntervalSample | null {
+  const series = timeline.intervals.get(driver);
+  if (!series) return null;
+  const i = lastIndexAtOrBefore(series.t, time);
+  return i < 0 ? null : { gap: series.gap[i], interval: series.interval[i] };
 }
 
 export function currentLap(timeline: SessionTimeline, driver: number, time: number): number | null {
@@ -132,10 +159,15 @@ export function phaseIndexAt(timeline: SessionTimeline, time: number): number {
   return index;
 }
 
-/** "Q2" during qualifying, null for sessions without numbered phases. */
-export function phaseLabelAt(timeline: SessionTimeline, time: number): string | null {
+/** "SQ" in sprint qualifying, "Q" otherwise. */
+export function phasePrefix(sessionName: string | undefined): string {
+  return sessionName?.startsWith("Sprint") ? "SQ" : "Q";
+}
+
+/** "Q2" (or "SQ2") during qualifying, null for sessions without numbered phases. */
+export function phaseLabelAt(timeline: SessionTimeline, time: number, prefix = "Q"): string | null {
   const phase = timeline.phases[phaseIndexAt(timeline, time)];
-  return phase?.number != null ? `Q${phase.number}` : null;
+  return phase?.number != null ? `${prefix}${phase.number}` : null;
 }
 
 function bestLapBetween(laps: TimedLap[], from: number, until: number, time: number): number | null {
@@ -182,7 +214,8 @@ export function buildLeaderboard(
   timeline: SessionTimeline,
   drivers: Driver[],
   isRace: boolean,
-  time: number
+  time: number,
+  prefix = "Q"
 ): LeaderboardRow[] {
   const rows = drivers.map((driver) => {
     const n = driver.driver_number;
@@ -210,12 +243,12 @@ export function buildLeaderboard(
     let isCarriedOver = false;
 
     if (isRace) {
-      const sample = telemetryBuffer.sampleInterval(row.driverNumber, time);
+      const sample = intervalAt(timeline, row.driverNumber, time);
       gapLabel = isLeader ? "LEADER" : formatGap(sample?.gap ?? null);
     } else if (best?.duration == null) {
       gapLabel = "NO TIME";
     } else if (best.fromPhase != null) {
-      gapLabel = `Q${best.fromPhase} ${formatLapTime(best.duration)}`;
+      gapLabel = `${prefix}${best.fromPhase} ${formatLapTime(best.duration)}`;
       isCarriedOver = true;
     } else if (best.duration === fastest) {
       gapLabel = formatLapTime(best.duration);

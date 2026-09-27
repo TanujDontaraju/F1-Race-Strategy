@@ -5,7 +5,7 @@ import { useMemo, useRef } from "react";
 import GlassPanel from "@/components/telemetry/GlassPanel";
 import TyreBadge from "@/components/telemetry/TyreBadge";
 import { useGlassHighlight } from "@/components/telemetry/useGlassHighlight";
-import { buildLeaderboard, phaseLabelAt } from "@/lib/telemetry/derive";
+import { buildLeaderboard, phaseLabelAt, phasePrefix } from "@/lib/telemetry/derive";
 import { teamColour } from "@/lib/telemetry/format";
 import { useTelemetryStore } from "@/lib/telemetry/store";
 
@@ -26,12 +26,13 @@ export default function LeaderboardPanel() {
   const pointerInside = useRef(false);
 
   const isRace = session?.session_type === "Race";
+  const prefix = phasePrefix(session?.session_name);
   const rows = useMemo(
-    () => (timeline ? buildLeaderboard(timeline, drivers, isRace, displayCursor) : []),
-    [timeline, drivers, isRace, displayCursor]
+    () => (timeline ? buildLeaderboard(timeline, drivers, isRace, displayCursor, prefix) : []),
+    [timeline, drivers, isRace, displayCursor, prefix]
   );
   const leaderLap = rows[0]?.lap;
-  const phase = timeline ? phaseLabelAt(timeline, displayCursor) : null;
+  const phase = timeline ? phaseLabelAt(timeline, displayCursor, prefix) : null;
   const subtitle = isRace
     ? leaderLap ? `Lap ${leaderLap}` : ""
     : [phase, session?.circuit_short_name].filter(Boolean).join(" · ");
@@ -39,7 +40,7 @@ export default function LeaderboardPanel() {
   return (
     <GlassPanel className="flex min-h-0 flex-col p-2" aria-label="Leaderboard">
       <header className="flex flex-col items-center gap-1 px-3 pb-3 pt-4">
-        <Image src="/f1-logo.png" alt="F1" width={666} height={375} className="-my-2 h-auto w-20" />
+        <Image src="/f1-logo.png" alt="F1" width={666} height={375} loading="eager" className="-my-2 h-auto w-20" />
         <p className="mt-1 text-sm font-semibold uppercase tracking-[0.14em] text-white/85">
           {session?.session_name ?? "—"}
         </p>

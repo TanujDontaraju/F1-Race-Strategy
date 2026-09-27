@@ -111,6 +111,77 @@ export interface CircuitLayout {
   pitLoss?: { normal: string; sc: string; vsc: string };
 }
 
+export interface WeatherRow {
+  date: string;
+  air_temperature: number | null;
+  track_temperature: number | null;
+  humidity: number | null;
+  pressure: number | null;
+  /** 1 while it's raining. */
+  rainfall: number | null;
+  wind_direction: number | null;
+  /** Metres per second. */
+  wind_speed: number | null;
+}
+
+/** F1's track status: AllClear, Yellow, SCDeployed, VSCDeployed, VSCEnding or Red. */
+export interface TrackStatusRow {
+  date: string;
+  status: string;
+}
+
+/** F1's session status: Started, Aborted, Inactive, Finished, Finalised or Ends. */
+export interface SessionStatusRow {
+  date: string;
+  status: string;
+}
+
+export interface PitRow {
+  date: string;
+  driver_number: number;
+  lap_number: number;
+  /** Seconds stationary in the box. */
+  stop_duration: number | null;
+  /** Seconds from pit entry to pit exit. */
+  lane_duration: number | null;
+}
+
+export interface GridRow {
+  driver_number: number;
+  position: number;
+}
+
+export interface RetirementRow {
+  date: string;
+  driver_number: number;
+  /** The lap they were on when they stopped. */
+  lap_number: number;
+}
+
+/** Qualifying: when F1 flagged a driver as knocked out (at the end of the part they went out in). */
+export interface KnockoutRow {
+  date: string;
+  driver_number: number;
+}
+
+/** One lap's car data against distance travelled (metres). */
+export interface LapTelemetry {
+  driver_number: number;
+  lap_number: number;
+  lap_duration: number | null;
+  length: number;
+  car: {
+    distance: number[];
+    speed: number[];
+    throttle: number[];
+    brake: number[];
+    n_gear: number[];
+    rpm: number[];
+  };
+  /** Seconds into the lap at each position sample, for timing mini-sectors. */
+  path: { distance: number[]; time: number[] };
+}
+
 /** Epoch-ms range that playback can move through for a session. */
 export interface ReplayWindow {
   start: number;

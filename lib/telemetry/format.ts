@@ -33,3 +33,19 @@ export function formatDuration(ms: number): string {
   const s = total % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+/** A race's total time: "1:38:02.755". */
+export function formatRaceTime(seconds: number | null | undefined): string {
+  if (seconds == null) return "—";
+  const hours = Math.floor(seconds / 3600);
+  const rest = formatLapTime(seconds - hours * 3600);
+  return hours > 0 ? `${hours}:${rest.padStart(9, "0")}` : rest;
+}
+
+/** Lap-time axis ticks: "1:47" on whole seconds, "1:47.5" otherwise. */
+export function formatLapTick(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds - minutes * 60;
+  const text = Number.isInteger(Math.round(rest * 1000) / 1000) ? String(Math.round(rest)) : rest.toFixed(1);
+  return minutes > 0 ? `${minutes}:${text.padStart(text.includes(".") ? 4 : 2, "0")}` : text;
+}

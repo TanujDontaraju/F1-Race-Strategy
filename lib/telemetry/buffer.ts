@@ -1,16 +1,17 @@
-import { getCarData, getIntervals, getLocations } from "@/lib/telemetry/api";
+import { getCarData, getLocations } from "@/lib/telemetry/api";
 import { parseDate } from "@/lib/telemetry/format";
-import { GapValue } from "@/lib/telemetry/types";
 
-// High-frequency telemetry (location/car_data ~3.7 Hz, intervals ~0.25 Hz)
-// lives outside React state: the track map samples it every animation frame,
-// and a full session is far too large to hold at once, so it's loaded in
-// chunks ahead of the playback cursor and trimmed behind it.
+// High-frequency telemetry (location/car_data ~3.7 Hz per car) lives outside
+// React state: the track map samples it every animation frame, and a full
+// session is far too large to hold at once, so it's loaded in chunks ahead of
+// the playback cursor and trimmed behind it.
 
 const CHUNK_MS = 30_000;
 const LOOKAHEAD_MS = 30_000;
 const RETAIN_MS = 60_000;
-const INTERVAL_LOOKBACK_MS = 15_000;
+// Loading starts a little behind the cursor so there's a sample to show straight away,
+// including right at the end of a session.
+const LOOKBEHIND_MS = 5_000;
 const MAX_INTERPOLATION_GAP_MS = 2_000;
 const STALE_MS = 5_000;
 const RETRY_MS = 2_000;
@@ -29,10 +30,6 @@ interface CarSeries extends Series {
   brake: number[];
   rpm: number[];
 }
-interface IntervalSeries extends Series {
-  gap: GapValue[];
-  interval: GapValue[];
-}
 
 export interface CarSample {
   speed: number;
@@ -40,11 +37,6 @@ export interface CarSample {
   throttle: number;
   brake: number;
   rpm: number;
-}
-
-export interface IntervalSample {
-  gap: GapValue;
-  interval: GapValue;
 }
 
 export function lastIndexAtOrBefore(times: number[], time: number): number {
@@ -82,7 +74,6 @@ function trim(series: Series, cutoff: number) {
 class TelemetryBuffer {
   private locations = new Map<number, LocationSeries>();
   private carData = new Map<number, CarSeries>();
-  private intervals = new Map<number, IntervalSeries>();
   private sessionKey: number | null = null;
   private windowEnd = 0;
   private from = 0;
@@ -90,18 +81,19 @@ class TelemetryBuffer {
   private inflight: Promise<void> | null = null;
   private generation = 0;
   private retryAt = 0;
+  /** Called when a chunk lands, so views sampling the buffer at render time can refresh while paused. */
+  onChunk: (() => void) | null = null;
 
   reset(sessionKey: number | null, start = 0, windowEnd = 0) {
     this.generation++;
     this.sessionKey = sessionKey;
     this.windowEnd = windowEnd;
-    this.from = start;
-    this.until = start;
+    this.from = start - LOOKBEHIND_MS;
+    this.until = start - LOOKBEHIND_MS;
     this.inflight = null;
     this.retryAt = 0;
     this.locations.clear();
     this.carData.clear();
-    this.intervals.clear();
   }
 
   covers(time: number): boolean {
@@ -123,14 +115,9 @@ class TelemetryBuffer {
     const sessionKey = this.sessionKey;
     const from = this.until;
     const to = Math.min(from + CHUNK_MS, this.windowEnd);
-    const isFirstChunk = this.until === this.from;
 
-    this.inflight = Promise.all([
-      getLocations(sessionKey, from, to),
-      getCarData(sessionKey, from, to),
-      getIntervals(sessionKey, isFirstChunk ? from - INTERVAL_LOOKBACK_MS : from, to),
-    ])
-      .then(([locations, carData, intervals]) => {
+    this.inflight = Promise.all([getLocations(sessionKey, from, to), getCarData(sessionKey, from, to)])
+      .then(([locations, carData]) => {
         if (generation !== this.generation) return;
 
         const byDate = <T extends { date: string }>(rows: T[]) =>
@@ -153,15 +140,10 @@ class TelemetryBuffer {
           s.brake.push(row.brake);
           s.rpm.push(row.rpm);
         }
-        for (const { row, t } of byDate(intervals)) {
-          const s = seriesFor(this.intervals, row.driver_number, () => ({ t: [], gap: [], interval: [] }));
-          s.t.push(t);
-          s.gap.push(row.gap_to_leader);
-          s.interval.push(row.interval);
-        }
 
         this.until = to;
         this.evict(cursor);
+        this.onChunk?.();
       })
       .catch(() => {
         // Playback holds in a buffering state until a retry succeeds.
@@ -177,7 +159,7 @@ class TelemetryBuffer {
   private evict(cursor: number) {
     const cutoff = cursor - RETAIN_MS;
     if (cutoff <= this.from) return;
-    const maps: Map<number, Series>[] = [this.locations, this.carData, this.intervals];
+    const maps: Map<number, Series>[] = [this.locations, this.carData];
     for (const map of maps) {
       for (const series of map.values()) trim(series, cutoff);
     }
@@ -200,20 +182,26 @@ class TelemetryBuffer {
     return { x: s.x[i], y: s.y[i] };
   }
 
+  /** One car's buffered samples in [from, to], for short history charts. */
+  carHistory(driver: number, from: number, to: number): { t: number[]; speed: number[]; throttle: number[]; brake: number[] } {
+    const s = this.carData.get(driver);
+    if (!s) return { t: [], speed: [], throttle: [], brake: [] };
+    const lo = lastIndexAtOrBefore(s.t, from) + 1;
+    const hi = lastIndexAtOrBefore(s.t, to) + 1;
+    return {
+      t: s.t.slice(lo, hi),
+      speed: s.speed.slice(lo, hi),
+      throttle: s.throttle.slice(lo, hi),
+      brake: s.brake.slice(lo, hi),
+    };
+  }
+
   sampleCar(driver: number, time: number): CarSample | null {
     const s = this.carData.get(driver);
     if (!s) return null;
     const i = lastIndexAtOrBefore(s.t, time);
     if (i < 0 || time - s.t[i] > STALE_MS) return null;
     return { speed: s.speed[i], gear: s.gear[i], throttle: s.throttle[i], brake: s.brake[i], rpm: s.rpm[i] };
-  }
-
-  sampleInterval(driver: number, time: number): IntervalSample | null {
-    const s = this.intervals.get(driver);
-    if (!s) return null;
-    const i = lastIndexAtOrBefore(s.t, time);
-    if (i < 0) return null;
-    return { gap: s.gap[i], interval: s.interval[i] };
   }
 }
 
