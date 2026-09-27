@@ -6,6 +6,8 @@ session's archive through the parsers shows exactly what the live callback
 will receive. Only the start of each stream is downloaded.
 
     server/.venv/Scripts/python server/inspect_topics.py [archive path] [topic ...]
+
+Needs the dev requirements: pip install -r server/requirements-dev.txt
 """
 
 import json

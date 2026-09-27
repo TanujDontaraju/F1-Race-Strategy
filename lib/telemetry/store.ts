@@ -18,6 +18,7 @@ import {
   getStints,
   getTrackStatus,
   getWeather,
+  LOCAL_SERVER,
   ServerUnreachableError,
 } from "@/lib/telemetry/api";
 import { telemetryBuffer } from "@/lib/telemetry/buffer";
@@ -46,8 +47,9 @@ export const PLAYBACK_SPEEDS: PlaybackSpeed[] = [1, 5, 10];
 /** "offline": the telemetry server isn't running; the dashboard reconnects once it is. */
 export type LoadStatus = "loading" | "ready" | "unavailable" | "error" | "offline";
 
-export const OFFLINE_MESSAGE =
-  "Can't reach the telemetry server on localhost:8000. Start it and this reconnects by itself.";
+export const OFFLINE_MESSAGE = LOCAL_SERVER
+  ? "Can't reach the telemetry server on localhost:8000. Start it and this reconnects by itself."
+  : "Can't reach the telemetry server right now. This reconnects by itself once it's back.";
 
 const failed = (error: unknown): LoadStatus => (error instanceof ServerUnreachableError ? "offline" : "error");
 

@@ -51,7 +51,9 @@ interface TelemetrySource {
 
 // --- server ---------------------------------------------------------------
 
-const SERVER = process.env.NEXT_PUBLIC_TELEMETRY_API ?? "http://localhost:8000";
+const SERVER = (process.env.NEXT_PUBLIC_TELEMETRY_API ?? "http://localhost:8000").replace(/\/+$/, "");
+/** True in development, where you start the server yourself; false once pointed at a deployed one. */
+export const LOCAL_SERVER = !process.env.NEXT_PUBLIC_TELEMETRY_API;
 
 /** The telemetry server isn't running (or isn't reachable), as opposed to a request failing. */
 export class ServerUnreachableError extends Error {

@@ -2,4 +2,3 @@ fastapi==0.141.1
 uvicorn==0.54.0
 numpy==2.5.3
 requests==2.34.2
-livef1==1.2.11

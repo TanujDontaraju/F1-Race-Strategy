@@ -6,6 +6,7 @@ Run from the project root:
 """
 
 import json
+import os
 from pathlib import Path
 
 import requests
@@ -18,12 +19,14 @@ from server import sessions
 from server.sessions import CACHE_DIR, SessionData
 
 MULTIVIEWER = "https://api.multiviewer.app/api/v1/circuits"
+# Comma-separated sites allowed to call this API, e.g. the deployed frontend's URL.
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 
 app = FastAPI(title="Pit wall telemetry")
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[origin.strip().rstrip("/") for origin in ALLOWED_ORIGINS.split(",") if origin.strip()],
     allow_methods=["GET"],
     allow_headers=["*"],
 )

@@ -1,6 +1,7 @@
 """Full sessions built from F1's archive, cached, and sliced by time for the frontend."""
 
 import json
+import os
 import statistics
 import threading
 import time
@@ -16,7 +17,8 @@ from server.mapping import FeedMapper, iso, parse_utc
 
 # Bump when mapping changes, so stale caches are rebuilt rather than served.
 CACHE_VERSION = 4
-CACHE_DIR = Path(__file__).parent / "cache" / f"v{CACHE_VERSION}"
+# A host can point CACHE_DIR at a persistent volume so rebuilt sessions survive redeploys.
+CACHE_DIR = Path(os.environ.get("CACHE_DIR") or Path(__file__).parent / "cache") / f"v{CACHE_VERSION}"
 MEMORY_SESSIONS = 4
 # High-frequency data kept either side of the replay window.
 SAMPLE_MARGIN_MS = 60_000

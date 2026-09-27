@@ -1,32 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import IntroScreen from "@/components/IntroScreen";
 import TelemetryDashboard from "@/components/telemetry/TelemetryDashboard";
 
 type Phase = "intro" | "flight" | "fade" | "done";
 
+// Module state outlives client-side navigation (Pit Wall ↔ News) but not a page
+// load or refresh, so the intro plays once per visit.
+let introPlayed = false;
+
 export default function Home() {
-  const [phase, setPhase] = useState<Phase>("intro");
-  const [mounted, setMounted] = useState(false);
+  const [phase, setPhase] = useState<Phase>(() => (introPlayed ? "done" : "intro"));
   const covered = phase === "intro";
-
-  useEffect(() => {
-    // Check if intro was already shown in this session
-    const introShown = sessionStorage.getItem("introShown");
-    if (introShown) {
-      setPhase("done");
-    }
-    setMounted(true);
-  }, []);
-
-  const handleDone = () => {
-    setPhase("done");
-    sessionStorage.setItem("introShown", "true");
-  };
-
-  // Don't render until we've checked sessionStorage
-  if (!mounted) return null;
 
   return (
     <>
@@ -39,7 +25,13 @@ export default function Home() {
         <TelemetryDashboard active={!covered} />
       </div>
       {phase !== "done" && (
-        <IntroScreen onLeave={(flight) => setPhase(flight ? "flight" : "fade")} onDone={handleDone} />
+        <IntroScreen
+          onLeave={(flight) => {
+            introPlayed = true;
+            setPhase(flight ? "flight" : "fade");
+          }}
+          onDone={() => setPhase("done")}
+        />
       )}
     </>
   );

@@ -1,0 +1,3 @@
+-r requirements.txt
+# Only inspect_topics.py uses livef1; it pulls in pandas, scipy and Jupyter, so the deployed server skips it.
+livef1==1.2.11
