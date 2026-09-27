@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import IntroScreen from "@/components/IntroScreen";
 import TelemetryDashboard from "@/components/telemetry/TelemetryDashboard";
 
@@ -8,7 +8,25 @@ type Phase = "intro" | "flight" | "fade" | "done";
 
 export default function Home() {
   const [phase, setPhase] = useState<Phase>("intro");
+  const [mounted, setMounted] = useState(false);
   const covered = phase === "intro";
+
+  useEffect(() => {
+    // Check if intro was already shown in this session
+    const introShown = sessionStorage.getItem("introShown");
+    if (introShown) {
+      setPhase("done");
+    }
+    setMounted(true);
+  }, []);
+
+  const handleDone = () => {
+    setPhase("done");
+    sessionStorage.setItem("introShown", "true");
+  };
+
+  // Don't render until we've checked sessionStorage
+  if (!mounted) return null;
 
   return (
     <>
@@ -21,7 +39,7 @@ export default function Home() {
         <TelemetryDashboard active={!covered} />
       </div>
       {phase !== "done" && (
-        <IntroScreen onLeave={(flight) => setPhase(flight ? "flight" : "fade")} onDone={() => setPhase("done")} />
+        <IntroScreen onLeave={(flight) => setPhase(flight ? "flight" : "fade")} onDone={handleDone} />
       )}
     </>
   );

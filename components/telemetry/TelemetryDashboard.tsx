@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
 import AnalysisView from "@/components/analysis/AnalysisView";
 import ComparePicker from "@/components/analysis/ComparePicker";
@@ -47,10 +48,13 @@ export default function TelemetryDashboard({ active = true }: { active?: boolean
       <div className="mx-auto flex w-full max-w-[1680px] flex-1 flex-col gap-4 p-4 lg:min-h-0 lg:p-6">
         {/* Raised so the session dropdowns open over the panels below. */}
         <header className="glass-chrome relative z-20 flex flex-wrap items-center justify-between gap-3 rounded-[28px] px-5 py-2.5">
-          <div className="flex items-baseline gap-3">
-            <span className="h-2 w-2 self-center rounded-full bg-f1-red" aria-hidden />
-            <h1 className="text-sm font-bold uppercase tracking-[0.16em]">Pit Wall</h1>
-            <span className="hidden text-xs font-medium text-white/50 sm:inline">Telemetry watcher</span>
+          <div className="flex items-baseline gap-6">
+            <Link href="/" className="text-sm font-bold uppercase tracking-[0.16em] transition-opacity hover:opacity-70">
+              Pit Wall
+            </Link>
+            <Link href="/news" className="text-sm font-bold uppercase tracking-[0.16em] transition-opacity hover:opacity-70">
+              News
+            </Link>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <SessionPicker />

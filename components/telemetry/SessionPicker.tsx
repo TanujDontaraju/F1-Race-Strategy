@@ -30,9 +30,12 @@ export default function SessionPicker() {
   const loadYear = useTelemetryStore((s) => s.loadYear);
   const selectSession = useTelemetryStore((s) => s.selectSession);
 
+  // Filter out testing sessions (those with "Day" session names)
+  const nonTestingSessions = sessions.filter((s) => !s.session_name.startsWith("Day "));
+
   // Most recent weekend first.
-  const meetings = groupByMeeting(sessions).reverse();
-  const meetingSessions = sessions.filter((s) => s.meeting_key === session?.meeting_key);
+  const meetings = groupByMeeting(nonTestingSessions).reverse();
+  const meetingSessions = nonTestingSessions.filter((s) => s.meeting_key === session?.meeting_key);
 
   const handleMeetingChange = (meetingKey: string) => {
     const weekend = sessions.filter((s) => s.meeting_key === Number(meetingKey));
