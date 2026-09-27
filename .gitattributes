@@ -1,0 +1,3 @@
+# Run on Linux servers: CRLF endings would break them.
+deploy/** text eol=lf
+server/Dockerfile text eol=lf

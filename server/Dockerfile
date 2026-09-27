@@ -11,5 +11,5 @@ RUN pip install --no-cache-dir -r server/requirements.txt
 
 COPY server/*.py server/
 
-# Hosts like Render pass the port to listen on in $PORT.
+# Listens on $PORT when a host sets it, otherwise 8000.
 CMD ["sh", "-c", "uvicorn server.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
