@@ -286,6 +286,7 @@ export default function TrackMap() {
   const session = useTelemetryStore((s) => s.session);
   const track = useTelemetryStore((s) => s.track);
   const status = useTelemetryStore((s) => s.status);
+  const raceWeek = useTelemetryStore((s) => s.raceWeek);
   const panelRef = useRef<HTMLElement>(null);
   const [follow, setFollow] = useState(false);
   const followRef = useRef(follow);
@@ -307,6 +308,7 @@ export default function TrackMap() {
   };
 
   const ready = status === "ready";
+  const upcoming = status === "upcoming";
 
   return (
     <GlassPanel
@@ -316,8 +318,12 @@ export default function TrackMap() {
     >
       <header className="flex items-center justify-between gap-3 px-6 pt-5">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-white/60">{session?.circuit_short_name ?? ""}</p>
-          <p className="truncate text-lg font-bold tracking-tight">{session?.country_name ?? "—"}</p>
+          <p className="text-xs font-medium text-white/60">
+            {(upcoming ? raceWeek?.place : session?.circuit_short_name) ?? ""}
+          </p>
+          <p className="truncate text-lg font-bold tracking-tight">
+            {(upcoming ? raceWeek?.name : session?.country_name) ?? "—"}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           {ready && <WeatherNow />}
@@ -343,7 +349,7 @@ export default function TrackMap() {
           {status === "unavailable" && UNAVAILABLE}
           {status === "error" && "Couldn't load this session."}
           {status === "offline" && OFFLINE_MESSAGE}
-          {status === "ready" && "Track layout unavailable for this circuit."}
+          {(ready || upcoming) && "Track layout unavailable for this circuit."}
         </div>
       )}
 

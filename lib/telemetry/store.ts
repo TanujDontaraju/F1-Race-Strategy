@@ -19,12 +19,14 @@ import {
   getTrackStatus,
   getWeather,
   LOCAL_SERVER,
+  MOCK_SOURCE,
   ServerUnreachableError,
 } from "@/lib/telemetry/api";
 import { telemetryBuffer } from "@/lib/telemetry/buffer";
 import { buildTimeline, positionAt, SessionTimeline } from "@/lib/telemetry/derive";
 import { parseDate } from "@/lib/telemetry/format";
 import { buildTrackGeometry, TrackGeometry } from "@/lib/telemetry/geometry";
+import { getRaceWeek, RaceWeek, raceWeekSessions } from "@/lib/telemetry/schedule";
 import {
   CircuitLayout,
   Driver,
@@ -44,8 +46,11 @@ import { sessionKind, ViewId, viewsFor } from "@/lib/telemetry/views";
 export type PlaybackSpeed = 1 | 5 | 10;
 export const PLAYBACK_SPEEDS: PlaybackSpeed[] = [1, 5, 10];
 
-/** "offline": the telemetry server isn't running; the dashboard reconnects once it is. */
-export type LoadStatus = "loading" | "ready" | "unavailable" | "error" | "offline";
+/**
+ * "offline": the telemetry server isn't running; the dashboard reconnects once it is.
+ * "upcoming": it's race week but the Grand Prix hasn't started, so there's only its schedule and map.
+ */
+export type LoadStatus = "loading" | "ready" | "unavailable" | "error" | "offline" | "upcoming";
 
 export const OFFLINE_MESSAGE = LOCAL_SERVER
   ? "Can't reach the telemetry server on localhost:8000. Start it and this reconnects by itself."
@@ -67,6 +72,8 @@ interface TelemetryState {
   year: number;
   sessions: Session[];
   session: Session | null;
+  /** This week's Grand Prix; null if the calendar couldn't be reached. */
+  raceWeek: RaceWeek | null;
   status: LoadStatus;
   drivers: Driver[];
   timeline: SessionTimeline | null;
@@ -93,7 +100,13 @@ interface TelemetryState {
   /** Drivers the analysis views compare, in the order they were picked. */
   compare: number[];
 
+  /** First load: this race week's Grand Prix, or the latest session if the calendar is unreachable. */
+  loadCurrent: () => Promise<void>;
   loadYear: (year: number) => Promise<void>;
+  /** The race week's Grand Prix before it has any data: its schedule and circuit. */
+  showUpcoming: () => void;
+  /** While showing an upcoming weekend, switches to it once its first session is published. */
+  checkUpcoming: () => Promise<void>;
   selectSession: (sessionKey: number) => Promise<void>;
   /** Loads whatever failed to load last time: the season's sessions, or the chosen session. */
   retry: () => Promise<void>;
@@ -164,6 +177,7 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   year: getAvailableYears()[0],
   sessions: [],
   session: null,
+  raceWeek: null,
   status: "loading",
   drivers: [],
   timeline: null,
@@ -181,6 +195,31 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   view: "pitwall",
   compare: [],
 
+  loadCurrent: async () => {
+    set({ sessions: [], session: null, status: "loading" });
+    let week: RaceWeek | null;
+    let sessions: Session[];
+    try {
+      const [found, thisYear] = await Promise.all([MOCK_SOURCE ? null : getRaceWeek(), getSessions(get().year)]);
+      week = found;
+      sessions = week && week.season !== get().year ? await getSessions(week.season) : thisYear;
+    } catch (error) {
+      set({ status: failed(error) });
+      return;
+    }
+
+    // Between seasons, the race week can still be last year's finale.
+    const year = week?.season ?? get().year;
+    const years = get().years.includes(year) ? get().years : [...get().years, year].sort((a, b) => b - a);
+    set({ year, years, sessions, raceWeek: week });
+
+    const weekSessions = week ? raceWeekSessions(sessions, week) : [];
+    const latest = (weekSessions.length > 0 ? weekSessions : sessions).at(-1);
+    if (week && weekSessions.length === 0) get().showUpcoming();
+    else if (latest) await get().selectSession(latest.session_key);
+    else set({ status: "unavailable" });
+  },
+
   loadYear: async (year) => {
     set({ year, sessions: [], session: null, status: "loading" });
     let sessions: Session[];
@@ -195,6 +234,42 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     const latest = sessions[sessions.length - 1];
     if (latest) await get().selectSession(latest.session_key);
     else set({ status: "unavailable" });
+  },
+
+  showUpcoming: () => {
+    const week = get().raceWeek;
+    if (!week) return;
+    // Cancels a session that's still loading.
+    loadToken++;
+    telemetryBuffer.reset(null);
+    set({
+      session: null,
+      status: "upcoming",
+      isPlaying: false,
+      isBuffering: false,
+      replay: null,
+      drivers: [],
+      timeline: null,
+      track: week.layout ? buildTrackGeometry(week.layout) : null,
+      pitLoss: null,
+      view: "pitwall",
+      ...NO_EXTRAS,
+    });
+  },
+
+  checkUpcoming: async () => {
+    const { raceWeek: week, year } = get();
+    if (!week || get().status !== "upcoming") return;
+    let sessions: Session[];
+    try {
+      sessions = await getSessions(year);
+    } catch {
+      return;
+    }
+    if (get().status !== "upcoming") return;
+    set({ sessions });
+    const latest = raceWeekSessions(sessions, week).at(-1);
+    if (latest) await get().selectSession(latest.session_key);
   },
 
   selectSession: async (sessionKey) => {
@@ -301,9 +376,9 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   },
 
   retry: async () => {
-    const { session, sessions, year, loadYear, selectSession } = get();
+    const { session, sessions, loadCurrent, selectSession } = get();
     if (session && sessions.length > 0) await selectSession(session.session_key);
-    else await loadYear(year);
+    else await loadCurrent();
   },
 
   togglePlay: () => {

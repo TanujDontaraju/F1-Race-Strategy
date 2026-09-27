@@ -2,9 +2,12 @@
 
 import Dropdown from "@/components/telemetry/Dropdown";
 import SegmentedControl from "@/components/telemetry/SegmentedControl";
+import { raceWeekSessions } from "@/lib/telemetry/schedule";
 import { useTelemetryStore } from "@/lib/telemetry/store";
 import { Session } from "@/lib/telemetry/types";
 import { sessionShortName } from "@/lib/telemetry/views";
+
+const UPCOMING = "upcoming";
 
 function groupByMeeting(sessions: Session[]): Session[][] {
   const groups = new Map<number, Session[]>();
@@ -27,8 +30,11 @@ export default function SessionPicker() {
   const year = useTelemetryStore((s) => s.year);
   const sessions = useTelemetryStore((s) => s.sessions);
   const session = useTelemetryStore((s) => s.session);
+  const raceWeek = useTelemetryStore((s) => s.raceWeek);
+  const status = useTelemetryStore((s) => s.status);
   const loadYear = useTelemetryStore((s) => s.loadYear);
   const selectSession = useTelemetryStore((s) => s.selectSession);
+  const showUpcoming = useTelemetryStore((s) => s.showUpcoming);
 
   // Filter out testing sessions (those with "Day" session names)
   const nonTestingSessions = sessions.filter((s) => !s.session_name.startsWith("Day "));
@@ -36,8 +42,16 @@ export default function SessionPicker() {
   // Most recent weekend first.
   const meetings = groupByMeeting(nonTestingSessions).reverse();
   const meetingSessions = nonTestingSessions.filter((s) => s.meeting_key === session?.meeting_key);
+  // This week's Grand Prix, listed before it has any sessions to pick.
+  const upcoming =
+    raceWeek && raceWeek.season === year && raceWeekSessions(sessions, raceWeek).length === 0 ? raceWeek : null;
+  const showingUpcoming = status === "upcoming" && upcoming;
 
   const handleMeetingChange = (meetingKey: string) => {
+    if (meetingKey === UPCOMING) {
+      showUpcoming();
+      return;
+    }
     const weekend = sessions.filter((s) => s.meeting_key === Number(meetingKey));
     const latest = weekend[weekend.length - 1];
     if (latest) void selectSession(latest.session_key);
@@ -54,12 +68,25 @@ export default function SessionPicker() {
       />
       <Dropdown
         label="Grand Prix"
-        value={String(session?.meeting_key ?? "")}
-        options={meetings.map((weekend) => ({ value: String(weekend[0].meeting_key), label: meetingLabel(weekend) }))}
+        value={showingUpcoming ? UPCOMING : String(session?.meeting_key ?? "")}
+        options={[
+          ...(upcoming ? [{ value: UPCOMING, label: `${upcoming.name.replace("Grand Prix", "GP")} · ${upcoming.place}` }] : []),
+          ...meetings.map((weekend) => ({ value: String(weekend[0].meeting_key), label: meetingLabel(weekend) })),
+        ]}
         onChange={handleMeetingChange}
-        disabled={meetings.length === 0}
+        disabled={meetings.length === 0 && !upcoming}
       />
-      {session && meetingSessions.length > 0 && (
+      {showingUpcoming && (
+        <SegmentedControl
+          kind="radio"
+          label="Session"
+          options={upcoming.sessions.map((s) => sessionShortName({ session_name: s.name }))}
+          value=""
+          onChange={() => {}}
+          disabled
+        />
+      )}
+      {!showingUpcoming && session && meetingSessions.length > 0 && (
         <SegmentedControl
           kind="radio"
           label="Session"

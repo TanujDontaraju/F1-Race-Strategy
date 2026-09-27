@@ -12,6 +12,8 @@ interface SegmentedControlProps<T extends string | number> {
   kind?: "tabs" | "radio";
   getLabel?: (option: T) => string;
   className?: string;
+  /** Shown but locked, e.g. a weekend's sessions before they've run. */
+  disabled?: boolean;
 }
 
 const SEGMENT = "[data-segment]";
@@ -26,6 +28,7 @@ export default function SegmentedControl<T extends string | number>({
   kind = "tabs",
   getLabel = String,
   className = "",
+  disabled = false,
 }: SegmentedControlProps<T>) {
   const listRef = useRef<HTMLDivElement>(null);
   const { ref: thumbRef, moveTo, trackPointer } = useGlassHighlight<HTMLSpanElement>();
@@ -88,8 +91,10 @@ export default function SegmentedControl<T extends string | number>({
       ref={listRef}
       role={isTabs ? "tablist" : "radiogroup"}
       aria-label={label}
+      aria-disabled={disabled || undefined}
       onKeyDown={onKeyDown}
       onPointerMove={(e) => {
+        if (disabled) return;
         trackPointer(e);
         trackHover(e);
         // The lighter glass only marks segments you could switch to, not the current one.
@@ -113,10 +118,11 @@ export default function SegmentedControl<T extends string | number>({
             aria-checked={isTabs ? undefined : selected}
             data-segment
             data-selected={selected}
+            disabled={disabled}
             tabIndex={selected ? 0 : -1}
             onClick={() => select(option)}
-            className={`relative rounded-full px-3 py-1.5 text-xs font-semibold tabular-nums outline-none transition-[color,transform] duration-150 ease-out active:scale-95 focus-visible:ring-1 focus-visible:ring-white/50 ${
-              selected ? "text-white" : "text-white/55 hover:text-white/80"
+            className={`relative rounded-full px-3 py-1.5 text-xs font-semibold tabular-nums outline-none transition-[color,transform] duration-150 ease-out focus-visible:ring-1 focus-visible:ring-white/50 ${
+              disabled ? "text-white/30" : selected ? "text-white active:scale-95" : "text-white/55 hover:text-white/80 active:scale-95"
             }`}
           >
             {getLabel(option)}

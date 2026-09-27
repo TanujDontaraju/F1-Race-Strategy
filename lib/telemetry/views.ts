@@ -49,6 +49,6 @@ const SHORT_NAMES: Record<string, string> = {
 };
 
 /** Chip label for the session switcher. */
-export function sessionShortName(session: Session): string {
+export function sessionShortName(session: Pick<Session, "session_name">): string {
   return SHORT_NAMES[session.session_name] ?? session.session_name;
 }

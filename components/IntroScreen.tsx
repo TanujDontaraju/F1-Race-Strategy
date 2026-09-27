@@ -6,6 +6,7 @@ import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { drawTrack, TRACK_MAP_PADDING } from "@/lib/telemetry/drawTrack";
 import { buildFormationLap, FormationLap } from "@/lib/telemetry/formationLap";
 import { Bounds, fitToBox, Point, projector, ScreenFit } from "@/lib/telemetry/geometry";
+import { formatWeekendDates } from "@/lib/telemetry/schedule";
 import { useTelemetryStore } from "@/lib/telemetry/store";
 
 // The car waits on the grid this long before launching.
@@ -86,12 +87,13 @@ function Rise({ shown, delay = 0, children }: { shown: boolean; delay?: number; 
 }
 
 /**
- * A formation lap round this weekend's circuit while the dashboard loads behind
+ * A formation lap round this race week's circuit while the dashboard loads behind
  * it. On entering, the drawn circuit flies into the track map, where the
  * dashboard's own copy takes over.
  */
 export default function IntroScreen({ onLeave, onDone }: IntroScreenProps) {
   const session = useTelemetryStore((s) => s.session);
+  const raceWeek = useTelemetryStore((s) => s.raceWeek);
   const track = useTelemetryStore((s) => s.track);
   const status = useTelemetryStore((s) => s.status);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -102,6 +104,13 @@ export default function IntroScreen({ onLeave, onDone }: IntroScreenProps) {
 
   const loaded = status !== "loading";
   const ready = loaded && (lapDone || !track);
+  const upcoming = status === "upcoming" && raceWeek;
+  const titled = !!session || !!upcoming;
+  const place = upcoming ? raceWeek.place : session?.circuit_short_name;
+  const heading = raceWeek?.name ?? session?.country_name;
+  const subtitle = upcoming
+    ? `${raceWeek.place} · ${formatWeekendDates(raceWeek)}`
+    : session && `${session.circuit_short_name} · ${session.session_name}`;
 
   useEffect(() => {
     onDoneRef.current = onDone;
@@ -266,7 +275,7 @@ export default function IntroScreen({ onLeave, onDone }: IntroScreenProps) {
       <canvas
         ref={canvasRef}
         role="img"
-        aria-label={session ? `${session.circuit_short_name} circuit` : "Circuit"}
+        aria-label={place ? `${place} circuit` : "Circuit"}
         className="absolute inset-0 h-full w-full transition-opacity duration-700 ease-out"
         style={{ opacity: track ? 1 : 0 }}
       />
@@ -275,16 +284,14 @@ export default function IntroScreen({ onLeave, onDone }: IntroScreenProps) {
         className="absolute inset-x-0 bottom-0 flex flex-col items-center px-6 pb-[max(2.5rem,7vh)] text-center transition-[opacity,transform] duration-150 ease-out"
         style={leaving ? { opacity: 0, transform: "translateY(6px)" } : undefined}
       >
-        <Rise shown={!!session} delay={250}>
+        <Rise shown={titled} delay={250}>
           <Image src="/f1-logo.png" alt="Formula 1" width={666} height={375} loading="eager" className="h-auto w-14" />
         </Rise>
-        <Rise shown={!!session} delay={330}>
-          <h2 className="mt-3 text-4xl font-bold tracking-tight sm:text-5xl">{session?.country_name}</h2>
+        <Rise shown={titled} delay={330}>
+          <h2 className="mt-3 text-balance text-4xl font-bold tracking-tight sm:text-5xl">{heading}</h2>
         </Rise>
-        <Rise shown={!!session} delay={410}>
-          <p className="mt-2 text-sm font-medium text-white/60">
-            {session && `${session.circuit_short_name} · ${session.session_name}`}
-          </p>
+        <Rise shown={titled} delay={410}>
+          <p className="mt-2 text-sm font-medium text-white/60">{subtitle}</p>
         </Rise>
 
         <div className="mt-8 grid h-12 place-items-center">

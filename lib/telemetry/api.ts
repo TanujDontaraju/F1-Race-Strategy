@@ -165,7 +165,9 @@ const mockSource: TelemetrySource = {
 
 // --- public API -----------------------------------------------------------
 
-const source = process.env.NEXT_PUBLIC_TELEMETRY_SOURCE === "mock" ? mockSource : serverSource;
+/** Bundled fixtures instead of the server, for frontend work offline. */
+export const MOCK_SOURCE = process.env.NEXT_PUBLIC_TELEMETRY_SOURCE === "mock";
+const source = MOCK_SOURCE ? mockSource : serverSource;
 
 /** Whether the telemetry server answers; always true for the bundled fixtures. */
 export async function serverReachable(): Promise<boolean> {

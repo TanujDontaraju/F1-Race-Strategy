@@ -6,6 +6,8 @@ car telemetry, replayed from F1's own timing archive.
 - **Frontend:** Next.js (React), in `app/`, `components/`, `lib/`
 - **API:** Flask, in `server/` — rebuilds a session from F1's live-timing archive and caches it
 - **Deployment:** frontend on Vercel, API on PythonAnywhere (see `deploy/pythonanywhere/`)
+- **Race week:** the season calendar comes from [Jolpica](https://github.com/jolpica/jolpica-f1), and
+  outlines for circuits without data yet from [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (MIT)
 
 ## Running locally
 
