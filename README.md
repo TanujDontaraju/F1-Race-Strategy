@@ -1,51 +1,29 @@
-AI Race Strategy Simulator (In Progress)
-Python, Data Modeling, Simulation Systems
-• Developing a data-driven simulation system to model Formula 1 race outcomes using historical lap
-times, tire degradation, and track-specific variables.
-• Building a lap-by-lap simulation engine incorporating probabilistic events such as pit strategies, safety
-cars, and performance variability.
-• Designing a strategy optimization module to evaluate and compare multiple race strategies (e.g.,
-undercut vs overcut).
+# F1 Pit Wall
 
-## Setup and Run Instructions
-To get this project up and running on your local machine, follow these steps:
+A live-timing telemetry dashboard for Formula 1 sessions: track map, lap times, tire strategy, and
+car telemetry, replayed from F1's own timing archive.
 
-### Prerequisites
+- **Frontend:** Next.js (React), in `app/`, `components/`, `lib/`
+- **API:** Flask, in `server/` — rebuilds a session from F1's live-timing archive and caches it
+- **Deployment:** frontend on Vercel, API on PythonAnywhere (see `deploy/pythonanywhere/`)
 
-Make sure you have Python 3.x installed.
+## Running locally
 
-### Installation
+**Frontend:**
+```bash
+npm install
+npm run dev
+```
+Opens at `http://localhost:3000`.
 
-1.  **Clone the repository (if applicable) or navigate to your project directory:**
-    ```bash
-    cd path/to/F1
-    ```
-2.  **(Optional but Recommended) Create and activate a virtual environment (use `python3` if `python` is not found):**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-    ```
-3.  **Install the required packages from `requirements.txt`:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+**API** (separate terminal, needed for real data):
+```bash
+cd server
+python -m venv .venv
+.venv/Scripts/activate   # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+python -m flask --app main run --port 8000
+```
 
-### Running the Application
-
-1.  **Run the Streamlit application using Python's module flag (use `python3` if `python` is not found):**
-    This is the most reliable method, especially if you are not using a virtual environment.
-    ```bash
-    python3 -m streamlit run app.py
-    ```
-
-2.  **Access the application:**
-    Open your web browser and go to the URL provided in your terminal (usually `http://localhost:8501`).
-
-## Usage
-
-*   Use the sidebar to select the **Season** and **Grand Prix**.
-*   Adjust the base **Fastest Car Pace** and **Pit Stop Time Loss** if desired.
-*   In the main area, select a **Driver** from the dropdown menu.
-*   Define the race strategy by entering the **Pit Stop Laps** (e.g., `15, 40`).
-*   Choose the **Tire Compound** for the start and for each subsequent stint.
-*   Click **Simulate Race Strategy** to view the results, including total race time, a lap time chart, and detailed lap-by-lap data.
+Without the API running, set `NEXT_PUBLIC_TELEMETRY_SOURCE=mock` to use the small bundled fixtures
+in `public/mock/telemetry` instead.
