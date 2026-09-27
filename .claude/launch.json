@@ -10,7 +10,7 @@
     {
       "name": "telemetry-server",
       "runtimeExecutable": "server/.venv/Scripts/python",
-      "runtimeArgs": ["-m", "uvicorn", "server.main:app", "--port", "8000"],
+      "runtimeArgs": ["-m", "flask", "--app", "server.main", "run", "--port", "8000"],
       "port": 8000
     }
   ]

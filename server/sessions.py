@@ -17,8 +17,10 @@ from server.mapping import FeedMapper, iso, parse_utc
 
 # Bump when mapping changes, so stale caches are rebuilt rather than served.
 CACHE_VERSION = 4
-# A host can point CACHE_DIR at a persistent volume so rebuilt sessions survive redeploys.
-CACHE_DIR = Path(os.environ.get("CACHE_DIR") or Path(__file__).parent / "cache") / f"v{CACHE_VERSION}"
+CACHE_ROOT = Path(os.environ.get("CACHE_DIR") or Path(__file__).parent / "cache")
+CACHE_DIR = CACHE_ROOT / f"v{CACHE_VERSION}"
+# Hosts with a disk quota set this; the least recently used files go first (stale versions included).
+CACHE_MAX_MB = float(os.environ.get("CACHE_MAX_MB") or "inf")
 MEMORY_SESSIONS = 4
 # High-frequency data kept either side of the replay window.
 SAMPLE_MARGIN_MS = 60_000
@@ -239,18 +241,49 @@ def _save(data: SessionData) -> None:
     arrays = {f"loc_{k}": v for k, v in data.locations.columns.items()} | {"loc_t": data.locations.t}
     arrays |= {f"car_{k}": v for k, v in data.car_data.columns.items()} | {"car_t": data.car_data.t}
     np.savez_compressed(samples_path, **arrays)
+    _trim_disk(keep={rows_path, samples_path})
+
+
+_disk_lock = threading.Lock()
+
+
+def _trim_disk(keep: set[Path]) -> None:
+    if CACHE_MAX_MB == float("inf"):
+        return
+    with _disk_lock:
+        files = []
+        for path in CACHE_ROOT.rglob("*"):
+            try:
+                if path.is_file():
+                    stat = path.stat()
+                    files.append((stat.st_mtime, stat.st_size, path))
+            except OSError:
+                continue
+        total = sum(size for _, size, _ in files)
+        for _, size, path in sorted(files):
+            if total <= CACHE_MAX_MB * 1024 * 1024:
+                break
+            if path in keep:
+                continue
+            path.unlink(missing_ok=True)
+            total -= size
 
 
 def _load(key: int) -> SessionData | None:
     rows_path, samples_path = _paths(key)
-    if not rows_path.exists() or not samples_path.exists():
+    try:
+        # Marks the session as recently used, so trimming the disk cache keeps it.
+        for path in (rows_path, samples_path):
+            os.utime(path)
+        saved = json.loads(rows_path.read_text())
+        with np.load(samples_path) as arrays:
+            def samples(prefix: str) -> Samples:
+                columns = {k[len(prefix):]: arrays[k] for k in arrays.files if k.startswith(prefix) and k != f"{prefix}t"}
+                return Samples(arrays[f"{prefix}t"], columns)
+            return SessionData(key, tuple(saved["window"]), saved["rows"], samples("loc_"), samples("car_"))
+    except (OSError, ValueError):
+        # Not cached, or trimmed from the disk cache: rebuild it.
         return None
-    saved = json.loads(rows_path.read_text())
-    with np.load(samples_path) as arrays:
-        def samples(prefix: str) -> Samples:
-            columns = {k[len(prefix):]: arrays[k] for k in arrays.files if k.startswith(prefix) and k != f"{prefix}t"}
-            return Samples(arrays[f"{prefix}t"], columns)
-        return SessionData(key, tuple(saved["window"]), saved["rows"], samples("loc_"), samples("car_"))
 
 
 # --- lookup ---------------------------------------------------------------

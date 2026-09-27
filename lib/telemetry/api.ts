@@ -52,6 +52,7 @@ interface TelemetrySource {
 // --- server ---------------------------------------------------------------
 
 const SERVER = (process.env.NEXT_PUBLIC_TELEMETRY_API ?? "http://localhost:8000").replace(/\/+$/, "");
+const MULTIVIEWER = "https://api.multiviewer.app/api/v1/circuits";
 /** True in development, where you start the server yourself; false once pointed at a deployed one. */
 export const LOCAL_SERVER = !process.env.NEXT_PUBLIC_TELEMETRY_API;
 
@@ -89,7 +90,11 @@ const serverSource: TelemetrySource = {
   getIntervals: (key, from, to) => requestRows(`/sessions/${key}/intervals?from=${from}&to=${to}`),
   getLocations: (key, from, to) => requestRows(`/sessions/${key}/location?from=${from}&to=${to}`),
   getCarData: (key, from, to) => requestRows(`/sessions/${key}/car_data?from=${from}&to=${to}`),
-  getCircuitLayout: (circuitKey, year) => request(`/circuits/${circuitKey}/${year}`),
+  // Straight from MultiViewer, which allows browsers to call it (the free server host can't reach it).
+  async getCircuitLayout(circuitKey, year) {
+    const res = await fetch(`${MULTIVIEWER}/${circuitKey}/${year}`);
+    return res.ok ? res.json() : null;
+  },
   getWeather: (key) => requestRows(`/sessions/${key}/weather`),
   getTrackStatus: (key) => requestRows(`/sessions/${key}/track_status`),
   getSessionStatus: (key) => requestRows(`/sessions/${key}/session_status`),

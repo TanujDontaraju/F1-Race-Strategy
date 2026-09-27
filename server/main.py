@@ -1,159 +1,171 @@
 """Telemetry API for the pit wall frontend.
 
 Rows match lib/telemetry/types.ts; time filters are epoch milliseconds.
-Run from the project root:
-    server/.venv/Scripts/python -m uvicorn server.main:app --port 8000
+A plain WSGI app, so it runs on PythonAnywhere. Locally, from the project root:
+    server/.venv/Scripts/python -m flask --app server.main run --port 8000
 """
 
+import gzip
 import json
 import os
-from pathlib import Path
 
-import requests
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import Response
+from flask import Flask, Response, abort, request
+from werkzeug.exceptions import HTTPException
 
 from server import sessions
-from server.sessions import CACHE_DIR, SessionData
+from server.sessions import SessionData
 
-MULTIVIEWER = "https://api.multiviewer.app/api/v1/circuits"
 # Comma-separated sites allowed to call this API, e.g. the deployed frontend's URL.
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+ALLOWED_ORIGINS = {
+    origin.strip().rstrip("/")
+    for origin in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+    if origin.strip()
+}
+GZIP_MIN_BYTES = 1024
 
-app = FastAPI(title="Pit wall telemetry")
-app.add_middleware(GZipMiddleware, minimum_size=1024)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[origin.strip().rstrip("/") for origin in ALLOWED_ORIGINS.split(",") if origin.strip()],
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
+app = Flask(__name__)
+
+
+@app.after_request
+def cors_and_gzip(response: Response) -> Response:
+    origin = request.headers.get("Origin")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.vary.add("Origin")
+
+    # The location and car_data slices are large and shrink ~10x.
+    if (
+        response.status_code == 200
+        and not response.direct_passthrough
+        and "gzip" in request.headers.get("Accept-Encoding", "")
+        and "Content-Encoding" not in response.headers
+    ):
+        body = response.get_data()
+        if len(body) >= GZIP_MIN_BYTES:
+            response.set_data(gzip.compress(body, compresslevel=5))
+            response.headers["Content-Encoding"] = "gzip"
+            response.vary.add("Accept-Encoding")
+    return response
+
+
+@app.errorhandler(HTTPException)
+def json_error(error: HTTPException) -> Response:
+    return Response(json.dumps({"detail": error.description}), error.code, mimetype="application/json")
 
 
 def _json(data) -> Response:
-    # Bypasses FastAPI's per-field encoder, which is slow on thousands of rows.
-    return Response(json.dumps(data, separators=(",", ":")), media_type="application/json")
+    return Response(json.dumps(data, separators=(",", ":")), mimetype="application/json")
+
+
+def _number(name: str, kind: type = float):
+    value = request.args.get(name, type=kind)
+    if value is None:
+        abort(400, f"Missing or invalid query parameter: {name}")
+    return value
 
 
 def _session(key: int) -> SessionData:
     data = sessions.get(key)
     if data is None:
-        raise HTTPException(404, "No timing data for this session")
+        abort(404, "No timing data for this session")
     return data
 
 
 @app.get("/health")
 def health():
     """Lets the frontend tell a stopped server apart from a failing request."""
-    return {"ok": True}
+    return _json({"ok": True})
 
 
 @app.get("/sessions")
-def list_sessions(year: int):
-    return _json(sessions.list_sessions(year))
+def list_sessions():
+    return _json(sessions.list_sessions(_number("year", int)))
 
 
-@app.get("/sessions/{key}/window")
+@app.get("/sessions/<int:key>/window")
 def window(key: int):
     start, end = _session(key).window
     return _json({"start": start, "end": end})
 
 
-@app.get("/sessions/{key}/drivers")
+@app.get("/sessions/<int:key>/drivers")
 def drivers(key: int):
     return _json(_session(key).rows["drivers"])
 
 
-@app.get("/sessions/{key}/stints")
+@app.get("/sessions/<int:key>/stints")
 def stints(key: int):
     return _json(_session(key).rows["stints"])
 
 
-@app.get("/sessions/{key}/position")
-def positions(key: int, to: float):
-    return _json(_session(key).rows_before("positions", to))
+@app.get("/sessions/<int:key>/position")
+def positions(key: int):
+    return _json(_session(key).rows_before("positions", _number("to")))
 
 
-@app.get("/sessions/{key}/laps")
-def laps(key: int, to: float):
-    return _json(_session(key).rows_before("laps", to, date_key="date_start"))
+@app.get("/sessions/<int:key>/laps")
+def laps(key: int):
+    return _json(_session(key).rows_before("laps", _number("to"), date_key="date_start"))
 
 
-@app.get("/sessions/{key}/race_control")
-def race_control(key: int, to: float):
-    return _json(_session(key).rows_before("race_control", to))
+@app.get("/sessions/<int:key>/race_control")
+def race_control(key: int):
+    return _json(_session(key).rows_before("race_control", _number("to")))
 
 
-@app.get("/sessions/{key}/weather")
+@app.get("/sessions/<int:key>/weather")
 def weather(key: int):
     return _json(_session(key).rows_before("weather", float("inf")))
 
 
-@app.get("/sessions/{key}/track_status")
+@app.get("/sessions/<int:key>/track_status")
 def track_status(key: int):
     return _json(_session(key).rows_before("track_status", float("inf")))
 
 
-@app.get("/sessions/{key}/session_status")
+@app.get("/sessions/<int:key>/session_status")
 def session_status(key: int):
     return _json(_session(key).rows_before("session_status", float("inf")))
 
 
-@app.get("/sessions/{key}/pit")
+@app.get("/sessions/<int:key>/pit")
 def pit_stops(key: int):
     return _json(_session(key).rows_before("pits", float("inf")))
 
 
-@app.get("/sessions/{key}/grid")
+@app.get("/sessions/<int:key>/grid")
 def grid(key: int):
     return _json(_session(key).rows["grid"])
 
 
-@app.get("/sessions/{key}/knockouts")
+@app.get("/sessions/<int:key>/knockouts")
 def knockouts(key: int):
     return _json(_session(key).rows_before("knockouts", float("inf")))
 
 
-@app.get("/sessions/{key}/retirements")
+@app.get("/sessions/<int:key>/retirements")
 def retirements(key: int):
     return _json(_session(key).rows_before("retirements", float("inf")))
 
 
-@app.get("/sessions/{key}/lap_telemetry")
-def lap_telemetry(key: int, driver: int, lap: int):
-    data = _session(key).lap_telemetry(driver, lap)
+@app.get("/sessions/<int:key>/lap_telemetry")
+def lap_telemetry(key: int):
+    data = _session(key).lap_telemetry(_number("driver", int), _number("lap", int))
     if data is None:
-        raise HTTPException(404, "No telemetry for that lap")
+        abort(404, "No telemetry for that lap")
     return _json(data)
 
 
-@app.get("/sessions/{key}/intervals")
-def intervals(key: int, start: float = Query(alias="from"), end: float = Query(alias="to")):
-    return _json(_session(key).rows_between("intervals", start, end))
+@app.get("/sessions/<int:key>/intervals")
+def intervals(key: int):
+    return _json(_session(key).rows_between("intervals", _number("from"), _number("to")))
 
 
-@app.get("/sessions/{key}/location")
-def locations(key: int, start: float = Query(alias="from"), end: float = Query(alias="to")):
-    return _json(_session(key).locations.between(start, end))
+@app.get("/sessions/<int:key>/location")
+def locations(key: int):
+    return _json(_session(key).locations.between(_number("from"), _number("to")))
 
 
-@app.get("/sessions/{key}/car_data")
-def car_data(key: int, start: float = Query(alias="from"), end: float = Query(alias="to")):
-    return _json(_session(key).car_data.between(start, end))
-
-
-@app.get("/circuits/{circuit_key}/{year}")
-def circuit(circuit_key: int, year: int):
-    """MultiViewer's track outline, cached on disk. 404s for circuits it doesn't know yet."""
-    path: Path = CACHE_DIR / "circuits" / f"{circuit_key}-{year}.json"
-    if not path.exists():
-        res = requests.get(f"{MULTIVIEWER}/{circuit_key}/{year}", timeout=30,
-                           headers={"User-Agent": "f1-pit-wall"})
-        if res.status_code == 404:
-            raise HTTPException(404, "Unknown circuit")
-        res.raise_for_status()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(res.content)
-    return Response(path.read_bytes(), media_type="application/json")
+@app.get("/sessions/<int:key>/car_data")
+def car_data(key: int):
+    return _json(_session(key).car_data.between(_number("from"), _number("to")))
